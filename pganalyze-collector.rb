@@ -124,6 +124,12 @@ class PSQL
 			exit 1
 		end
 
+		# If we've got anything left in stderr it's probably warning/notices. Dump them to debug
+                if stderr
+                        $logger.debug "Encountered warnings/notices:"
+                        stderr.each { |l| $logger.debug l }
+		end
+
 		# Drop number of rows
 		lines.pop
 		# Fetch column headers
