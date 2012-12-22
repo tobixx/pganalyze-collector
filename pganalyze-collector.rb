@@ -178,7 +178,7 @@ def fetch_queries
 		"time_variance", "time_stddev"] + both_fields
 
 	plan_fields = ["planid", "had_our_search_path", "from_our_database",
-		"query_valid", "last_startup_cost", "last_total_cost"] + both_fields
+		"query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
 	query = "SET pg_stat_plans.explain_format TO JSON;"
 	query += "SELECT replace(pg_stat_plans_explain(p.planid, p.userid, p.dbid), chr(10), ' ') AS p_explain"
@@ -195,7 +195,7 @@ def fetch_queries
 	# We don't want our stuff in the statistics
 	query += " AND p.query !~* '\\spg_stat_plans\\s'"
 	# Remove all plans which we can't explain
-	query += " AND p.from_our_database = TRUE AND p.query_valid = TRUE"
+	query += " AND p.from_our_database = TRUE AND p.query_explainable = TRUE"
 	query += " AND p.planid = ANY (pq.plan_ids);"
 
 	queries = {}
