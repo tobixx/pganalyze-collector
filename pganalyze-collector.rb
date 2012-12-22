@@ -14,7 +14,7 @@ API_URL = 'http://pganalyze.com/queries'
 RESET_STATS = true
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.0.1'
+VERSION = '0.0.1-dev'
 
 opts = GetoptLong.new(
 	[ '--help', '-h', GetoptLong::NO_ARGUMENT ],
@@ -28,6 +28,10 @@ opts = GetoptLong.new(
 $help = <<"BE_DRAGONS"
 
 #{MYNAME} #{VERSION}
+
+This tool collects query plan information from pg_stat_plans and sends it to
+pganalyze.com for processing. The collected & aggregated information can be
+then viewed there.
 
 -h, --help
 	This help
@@ -115,7 +119,7 @@ class PSQL
 			end
 			$logger.error "Got an error during query execution, exitstatus: #{$?.exitstatus}:"
 			stderr.each { |l| $logger.error l }
-			exit
+			exit 1
 		end
 
 		# Drop number of rows
@@ -215,28 +219,28 @@ def check_database
 		       :dbname => $db_name)
 
 	unless $db.ping
-		$logger.error "DB is not alive"
-		exit
+		$logger.error "Can't run query against the database"
+		exit 1
 	end
 	
 	unless $db.exec('SHOW is_superuser')[0]['is_superuser'] == 'on'
 		$logger.error "User #{$db_username} isn't a superuser"
-		exit
+		exit 1
 	end
 
 	unless $db.exec('SHOW server_version_num')[0]['server_version_num'].to_i >= 90100
 		$logger.error "You must be running PostgreSQL 9.1 or newer"
-		exit
+		exit 1
 	end
 
 	begin
 		unless $db.exec("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", true)[0]['foo'] == '1'
 			$logger.error "Extension pg_stat_plans isn't installed"
-			exit
+			exit 1
 		end
 	rescue
 		$logger.error "Table pg_extension doesn't exist - this shouldn't happen!"
-		exit
+		exit 1
 	end
 end
 
@@ -268,7 +272,7 @@ def read_config
 
 	unless configfile
 		$logger.error "Couldn't find a config file, perhaps create one with --generate-config?"
-		exit
+		exit 1
 	end
 
 	configdump = {}
@@ -277,7 +281,7 @@ def read_config
 		File.open(configfile) { |yf| configdump = YAML::load(yf) }
 	rescue ArgumentError
 		$logger.error "Failure while parsing #{configfile}, please fix or create a new one with --generate-config" 
-		exit
+		exit 1
 	end
 
 	$logger.debug "read config from #{$configfile[0]}"
@@ -295,7 +299,7 @@ def read_config
 
 	unless $db_name && $api_key
 		$logger.error "Missing database name and/or api key in configfile #{configfile}, perhaps create one with --generate-config?"
-		exit
+		exit 1
 	end
 end
 
@@ -320,7 +324,7 @@ EOF
 		}
 	rescue => e
 		$logger.error "Failed to write configfile: #{e.message}"
-		exit
+		exit 1
 	end
 	$logger.info "Wrote standard configuration to #{cf}, please edit it and then run the script again"
 end
