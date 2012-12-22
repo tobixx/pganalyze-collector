@@ -96,7 +96,7 @@ class PSQL
 		ENV['PGDATABASE'] = @dbname
 	end
 
-	def exec(query, should_raise = false)
+	def exec(query, should_raise = false, ignore_noncrit = false)
 		# FIXME: ruby1.8 popen only supports command strings, not arrays
 
 		$logger.debug "Running query: #{query}"
@@ -113,7 +113,9 @@ class PSQL
 			# Fall through if stderr is empty
 		end
 
-		if stderr or $?.exitstatus != 0
+		# Fail on all invocations where exitstatus is non-null
+		# When exitstatus is null, we might have only encountered notices or warnings which might be expected.
+		if $?.exitstatus != 0 or (stderr and ignore_noncrit == false)
 			if should_raise
 				raise RuntimeError, stderr
 			end
@@ -199,7 +201,7 @@ def fetch_queries
 	query += " AND p.planid = ANY (pq.plan_ids);"
 
 	queries = {}
-	$db.exec(query).each do |row|
+	$db.exec(query, false, true).each do |row|
 		query = {}; row.select {|k,| k[/^pq_/] }.each {|k,v| query[k.gsub("pq_", "")] = v }
 		key = query['normalized_query']
 		queries[key] ||= query
