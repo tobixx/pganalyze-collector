@@ -221,6 +221,12 @@ def check_database
 		exit
 	end
 
+	unless $db.exec('SHOW server_version_num')[0]['server_version_num'] < 90100
+		$logger.error "You must be running PostgreSQL 9.1 or newer"
+		exit
+	end
+
+	# FIXME: Proper error handling not possible since PSQL doesn't differ between psql and query errors
 	unless $db.exec("SELECT 1 as foo FROM pg_extension WHERE extname='pg_stat_plans'")[0]['foo'] == '1'
 		$logger.error "Extension pg_stat_plans isn't installed"
 		exit
