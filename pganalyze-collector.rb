@@ -92,7 +92,7 @@ class PSQL
 		ENV['PGDATABASE'] = @dbname
 	end
 
-	def exec(query)
+	def exec(query, should_raise = false)
 		# FIXME: ruby1.8 popen only supports command strings, not arrays
 
 		$logger.debug "Running query: #{query}"
@@ -110,6 +110,9 @@ class PSQL
 		end
 
 		if stderr or $?.exitstatus != 0
+			if should_raise
+				raise RuntimeError, stderr
+			end
 			$logger.error "Got an error during query execution, exitstatus: #{$?.exitstatus}:"
 			stderr.each { |l| $logger.error l }
 			exit
@@ -221,14 +224,18 @@ def check_database
 		exit
 	end
 
-	unless $db.exec('SHOW server_version_num')[0]['server_version_num'] < 90100
+	unless $db.exec('SHOW server_version_num')[0]['server_version_num'].to_i >= 90100
 		$logger.error "You must be running PostgreSQL 9.1 or newer"
 		exit
 	end
 
-	# FIXME: Proper error handling not possible since PSQL doesn't differ between psql and query errors
-	unless $db.exec("SELECT 1 as foo FROM pg_extension WHERE extname='pg_stat_plans'")[0]['foo'] == '1'
-		$logger.error "Extension pg_stat_plans isn't installed"
+	begin
+		unless $db.exec("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", true)[0]['foo'] == '1'
+			$logger.error "Extension pg_stat_plans isn't installed"
+			exit
+		end
+	rescue
+		$logger.error "Table pg_extension doesn't exist - this shouldn't happen!"
 		exit
 	end
 end
