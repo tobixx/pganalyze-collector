@@ -81,7 +81,6 @@ class PSQL
 		@host ||= 'localhost'
 		@port ||= 5432
 		@psql ||= find_psql
-		raise "Please specify an username" unless @username
 		raise "Please specify a database" unless @dbname
 		raise "Please specify path to psql binary" unless @psql
 		
@@ -290,12 +289,12 @@ end
 def write_config
 
 	config = <<'EOF'
-db_name: fill_me_in
 api_key: fill_me_in
-#db_host: localhost
-#db_port: 5432
+db_name: fill_me_in
 #db_username:
 #db_password:
+#db_host: localhost
+#db_port: 5432
 #psql_binary: /autodetected/from/$PATH
 EOF
 
