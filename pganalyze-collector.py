@@ -18,29 +18,33 @@ VERSION = '0.0.1-dev'
 
 
 class PSQL():
-	def __init__(self, dbname, username=None, password=None, psql=None, host='localhost', port=5432):
-		self.psql = psql or self._find_psql
+	def __init__(self, dbname, username=None, password=None, psql=None, host=None, port=None):
+		self.psql = psql or self._find_psql()
 
 		if not self.psql:
 			raise "Please specify path to psql binary"
+
+		logger.debug("Using %s as psql binary" % self.psql)
 		
 		# Setting up environment for psql
 		os.environ['PGDATABASE'] = dbname
 		os.environ['PGUSER'] = username or ''
 		os.environ['PGPASSWORD'] = password or ''
-		os.environ['PGHOST'] = host or ''
-		os.environ['PGPORT'] = port or ''
+		os.environ['PGHOST'] = host or 'localhost'
+		os.environ['PGPORT'] = port or '5432'
 
 	def run_query(self, query, should_raise=False, ignore_noncrit=False):
 
-		pprint(self)
 		logger.debug("Running query: %s" % query)
 
-		err_rd, err_wr = os.pipe
-		cmd = [self.psql, "-F\u2764", '--no-align', '--no-password', '--no-psqlrc', "-c", query]
+		colsep = unichr(0x2764)
+
+		cmd = [self.psql, "-F" + colsep, '--no-align', '--no-password', '--no-psqlrc', "-c", query]
 		lines = []
 
-		p = subprocess.popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		pprint(cmd)
+
+		p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 		(stdout, stderr) = p.communicate()
 
@@ -64,42 +68,46 @@ class PSQL():
 		# Drop number of rows
 		lines.pop
 		# Fetch column headers
-		columns = lines.shift.strip.split("\u2764")
+		columns = lines.pop(0).strip().split(colsep)
 
 		resultset = []
 		for line in lines:
-			values = line.strip.split("\u2764")
+			pprint(line)
+			values = line.strip().split(colsep)
 			resultset.append(dict(zip(columns, values)))
 
+		pprint(resultset)
 		return resultset
 
 	def ping(self):
 		logger.debug("Pinging database")
 		self.run_query('SELECT 1')
+		return True
 
 	def _find_psql(self):
 		cmd = 'psql'
 		for path in os.environ['PATH'].split(os.pathsep):
 			test = "%s/%s" % (path, cmd)
-			return os.path.isfile(test) and os.access(test, os.X_OK)
+			logger.debug("Testing %s" % test)
+			if os.path.isfile(test) and os.access(test, os.X_OK):
+				return test
 		return None
 
 
 
 def check_database():
 	global db, db_host, db_port, db_username, db_password, db_name
-	opts = {}
 	db = PSQL(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
 
 	if not db.ping():
 		logger.error("Can't run query against the database")
 		sys.exit(1)
 	
-	sys.exit(1)
 	if not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
 		logger.error("User %s isn't a superuser" % db_username)
 		sys.exit(1)
 
+	sys.exit(1)
 	if not db.run_query('SHOW server_version_num')[0]['server_version_num'].to_i >= 90100:
 		logger.error("You must be running PostgreSQL 9.1 or newer")
 		sys.exit(1)
@@ -192,8 +200,6 @@ def read_config():
 	for k, v in configparser.items('pganalyze'):
 		configdump[k] = v
 		logger.debug("%s => %s" % (k, v))
-
-	pprint(configdump)
 
 	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
 	db_host = configdump.get('db_host')
