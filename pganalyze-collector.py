@@ -3,9 +3,10 @@
 from optparse import OptionParser
 from pprint import pprint
 import logging
-import os
+import os, sys
 import re
-import configparser
+import ConfigParser
+from stat import *
 
 
 API_URL = 'http://pganalyze.com/queries'
@@ -33,11 +34,9 @@ def parse_options(print_help=False):
 		return
 
 	(options, args) = parser.parse_args()
-
 	options = options.__dict__
-
 	options['configfile'] = re.split(',\s+', options['configfile'].replace('$HOME', os.environ['HOME']))
-	pprint(options)
+
 	return options
 
 
@@ -45,69 +44,76 @@ def configure_logger():
 	logtemp = logging.getLogger(MYNAME)
 
 	if config['verbose']:
-		level = logging.DEBUG
+		logtemp.setLevel(logging.DEBUG)
 	else:
-		level = logging.INFO
-
+		logtemp.setLevel(logging.INFO)
 
 	lh = logging.StreamHandler()
-	format = '%(asctime)s %(message)s'
+	format = '%(levelname)s - %(asctime)s %(message)s'
 	lf = logging.Formatter(format)
 	lh.setFormatter(lf)
 	logtemp.addHandler(lh)
 
 	return logtemp
 
-def read_config
+def read_config():
 	# Return the first readable config file
+
+	logger.debug("Reading config")
 
 	configfile = None
 	for file in config['configfile']:
-		stat = None
-
-		mode = os.stat(file).st_mode
-
-		if not mode:
-			logger.debug "#{f} doesn't exist"
-			next
+		try:
+			mode = os.stat(file).st_mode
+		except Exception as e:
+			logger.debug("Couldn't stat file: %s" % e)
+			continue
 
 		if not S_ISREG(mode):
-			logger.debug "#{f} isn't a regular file"
-			next
+			logger.debug("%s isn't a regular file" % file)
+			continue
 
-		configfile = f
+		if not os.access(file, os.R_OK):
+			logger.debug("%s isn't readable" % file)
+			continue
+
+		configfile = file
 		break
-	}
 
 	if not configfile:
-		logger.error "Couldn't find a config file, perhaps create one with --generate-config?"
-		exit 1
+		logger.error("Couldn't find a readable config file, perhaps create one with --generate-config?")
+		sys.exit(1)
+
+	configparser = ConfigParser.RawConfigParser()
+
+	configparser.read(configfile)
+	try:
+		configparser.read(configfile)
+	except Exception as e:
+		logger.error("Failure while parsing %s: %s, please fix or create a new one with --generate-config" % (configfile, e))
+		sys.exit(1)
 
 	configdump = {}
+	logger.debug("read config from %s" % configfile)
+	for k, v in configparser.items('pganalyze'):
+		configdump[k] = v
+		logger.debug("%s => %s" % (k, v))
 
-		File.open(configfile) { |yf| configdump = YAML::load(yf) }
-	rescue ArgumentError
-		$logger.error "Failure while parsing #{configfile}, please fix or create a new one with --generate-config" 
-		exit 1
-	end
-
-	logger.debug "read config from %s" % configfile
-	configdump.each { |k, v|
-		$logger.debug "#{k} => #{v}"
-	}
+	pprint(configdump)
 
 	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
-	db_host = configdump['db_host']
-	db_port = configdump['db_port']
-	db_username = configdump['db_username']
-	db_password = configdump['db_password']
-	db_name = configdump['db_name']
-	api_key = configdump['api_key']
-	psql_binary = configdump['psql_binary']
+	db_host = configdump.get('db_host')
+	db_port = configdump.get('db_port')
+	db_username = configdump.get('db_username')
+	db_password = configdump.get('db_password')
+	db_name = configdump.get('db_name')
+	api_key = configdump.get('api_key')
+	psql_binary = configdump.get('psql_binary')
+
 
 	if not db_name and api_key:
-		logger.error "Missing database name and/or api key in configfile #{configfile}, perhaps create one with --generate-config?"
-		exit 1
+		logger.error("Missing database name and/or api key in configfile #{configfile}, perhaps create one with --generate-config?")
+		sys.exit(1)
 
 
 def fetch_queries():
@@ -128,11 +134,7 @@ def main():
 	config = parse_options()
 	logger = configure_logger()
 
-	print "OMGHI2U2" + VERSION
-	exit
-
-	if not db_name and api_key: 
-		read_config
+	read_config()
 
 	check_database
 
