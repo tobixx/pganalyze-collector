@@ -6,6 +6,7 @@ import logging
 import os, sys
 import re
 import ConfigParser
+import subprocess
 from stat import *
 
 
@@ -15,6 +16,101 @@ RESET_STATS = True
 MYNAME = 'pganalyze-collector'
 VERSION = '0.0.1-dev'
 
+
+class PSQL():
+	def __init__(self, dbname, username=None, password=None, psql=None, host='localhost', port=5432):
+		self.psql = psql or self._find_psql
+
+		if not self.psql:
+			raise "Please specify path to psql binary"
+		
+		# Setting up environment for psql
+		os.environ['PGDATABASE'] = dbname
+		os.environ['PGUSER'] = username or ''
+		os.environ['PGPASSWORD'] = password or ''
+		os.environ['PGHOST'] = host or ''
+		os.environ['PGPORT'] = port or ''
+
+	def run_query(self, query, should_raise=False, ignore_noncrit=False):
+
+		pprint(self)
+		logger.debug("Running query: %s" % query)
+
+		err_rd, err_wr = os.pipe
+		cmd = [self.psql, "-F\u2764", '--no-align', '--no-password', '--no-psqlrc', "-c", query]
+		lines = []
+
+		p = subprocess.popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+		(stdout, stderr) = p.communicate()
+
+
+		# Fail on all invocations where exitstatus is non-null
+		# When exitstatus is null, we might have only encountered notices or warnings which might be expected.
+		if p.returncode != 0 or (stderr and ignore_noncrit == False):
+			if should_raise:
+				raise stderr
+			logger.error("Got an error during query execution, exitstatus: %s:" % p.returncode)
+			logger.error(stderr)
+			sys.exit(1)
+
+		# If we've got anything left in stderr it's probably warning/notices. Dump them to debug
+		if stderr:
+                        logger.debug("Encountered warnings/notices:")
+			logger.debug(stderr)
+
+		lines = stdout.split("\n")
+
+		# Drop number of rows
+		lines.pop
+		# Fetch column headers
+		columns = lines.shift.strip.split("\u2764")
+
+		resultset = []
+		for line in lines:
+			values = line.strip.split("\u2764")
+			resultset.append(dict(zip(columns, values)))
+
+		return resultset
+
+	def ping(self):
+		logger.debug("Pinging database")
+		self.run_query('SELECT 1')
+
+	def _find_psql(self):
+		cmd = 'psql'
+		for path in os.environ['PATH'].split(os.pathsep):
+			test = "%s/%s" % (path, cmd)
+			return os.path.isfile(test) and os.access(test, os.X_OK)
+		return None
+
+
+
+def check_database():
+	global db, db_host, db_port, db_username, db_password, db_name
+	opts = {}
+	db = PSQL(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
+
+	if not db.ping():
+		logger.error("Can't run query against the database")
+		sys.exit(1)
+	
+	sys.exit(1)
+	if not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
+		logger.error("User %s isn't a superuser" % db_username)
+		sys.exit(1)
+
+	if not db.run_query('SHOW server_version_num')[0]['server_version_num'].to_i >= 90100:
+		logger.error("You must be running PostgreSQL 9.1 or newer")
+		sys.exit(1)
+
+	try:
+		if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", true)[0]['foo'] == '1':
+			logger.error("Extension pg_stat_plans isn't installed")
+			sys.exit(1)
+	except Exception as e:
+		logger.error("Table pg_extension doesn't exist - this shouldn't happen!")
+		sys.exit(1)
 
 def parse_options(print_help=False):
 	parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
@@ -57,8 +153,6 @@ def configure_logger():
 	return logtemp
 
 def read_config():
-	# Return the first readable config file
-
 	logger.debug("Reading config")
 
 	configfile = None
@@ -122,9 +216,6 @@ def fetch_queries():
 def post_data_to_web(queries):
 	print "Posting data to web"
 
-def check_database():
-	print "Checking database"
-
 def write_config():
 	print "I've written the config!"
 
@@ -136,7 +227,7 @@ def main():
 
 	read_config()
 
-	check_database
+	check_database()
 
 	queries = fetch_queries
 
@@ -149,7 +240,7 @@ def main():
 		if RESET_STATS:
 			print "Resetting stats"
 			#logger.debug "Resetting stats!"
-			#db.exec("SELECT pg_stat_plans_reset()")
+			#db.run_query("SELECT pg_stat_plans_reset()")
 		else:
 			print "Rejected"
 			#logger.error "Rejected by server"
@@ -168,88 +259,6 @@ if __name__ == '__main__': main()
 #require 'pp'
 #
 
-#
-#class PSQL
-#	def initialize(*args)
-#		(@host, @port, @username, @password, @dbname, @psql) =  args[0].values_at(:host, :port, :username, :password, :dbname, :psql)
-#		@host ||= 'localhost'
-#		@port ||= 5432
-#		@psql ||= find_psql
-#		raise "Please specify a database" unless @dbname
-#		raise "Please specify path to psql binary" unless @psql
-#		
-#		# Setting up ENV for psql
-#		ENV['PGUSER'] = @username
-#		ENV['PGPASSWORD'] = @password
-#		ENV['PGHOST'] = @host
-#		ENV['PGPORT'] = @port.to_s
-#		ENV['PGDATABASE'] = @dbname
-#	end
-#
-#	def exec(query, should_raise = false, ignore_noncrit = false)
-#		# FIXME: ruby1.8 popen only supports command strings, not arrays
-#
-#		$logger.debug "Running query: #{query}"
-#
-#		err_rd, err_wr = IO.pipe
-#		cmd = [@psql, "-F\u2764", '--no-align', '--no-password', '--no-psqlrc', "-c", query, :err => err_wr]
-#		lines = []
-#
-#		IO.popen(cmd, :err => err_wr) { |f| lines = f.readlines }
-#
-#		begin
-#			stderr = err_rd.read_nonblock(16384).split(/\n/)
-#		rescue Errno::EAGAIN
-#			# Fall through if stderr is empty
-#		end
-#
-#		# Fail on all invocations where exitstatus is non-null
-#		# When exitstatus is null, we might have only encountered notices or warnings which might be expected.
-#		if $?.exitstatus != 0 or (stderr and ignore_noncrit == false)
-#			if should_raise
-#				raise RuntimeError, stderr
-#			end
-#			$logger.error "Got an error during query execution, exitstatus: #{$?.exitstatus}:"
-#			stderr.each { |l| $logger.error l }
-#			exit 1
-#		end
-#
-#		# If we've got anything left in stderr it's probably warning/notices. Dump them to debug
-#                if stderr
-#                        $logger.debug "Encountered warnings/notices:"
-#                        stderr.each { |l| $logger.debug l }
-#		end
-#
-#		# Drop number of rows
-#		lines.pop
-#		# Fetch column headers
-#		columns = lines.shift.strip.split(/\u2764/)
-#
-#		resultset = []
-#		lines.each { |line|
-#		  values = line.strip.split(/\u2764/)
-#			resultset.push(Hash[columns.zip(values)])
-#		}
-#
-#		return resultset
-#	end
-#
-#	def ping
-#		$logger.debug "Pinging database"
-#		exec('SELECT 1')
-#	end
-#
-#	private
-#	def find_psql
-#		cmd = 'psql'
-#		ENV['PATH'].split(File::PATH_SEPARATOR).each do |path|
-#			test = "#{path}/#{cmd}"
-#			return test if File.executable? test
-#		end
-#		return nil
-#	end
-#end
-#
 #
 #def post_data_to_web(queries)
 #	to_post = {}
@@ -297,7 +306,7 @@ if __name__ == '__main__': main()
 #	query += " AND p.planid = ANY (pq.plan_ids);"
 #
 #	queries = {}
-#	$db.exec(query, false, true).each do |row|
+#	$db.run_query(query, false, true).each do |row|
 #		query = {}; row.select {|k,| k[/^pq_/] }.each {|k,v| query[k.gsub("pq_", "")] = v }
 #		key = query['normalized_query']
 #		queries[key] ||= query
@@ -308,40 +317,6 @@ if __name__ == '__main__': main()
 #	end
 #	queries.values
 #end
-#
-#def check_database
-#	$db = PSQL.new(:host => $db_host,
-#		       :port => $db_port,
-#		       :username => $db_username,
-#		       :password => $db_password,
-#		       :dbname => $db_name)
-#
-#	unless $db.ping
-#		$logger.error "Can't run query against the database"
-#		exit 1
-#	end
-#	
-#	unless $db.exec('SHOW is_superuser')[0]['is_superuser'] == 'on'
-#		$logger.error "User #{$db_username} isn't a superuser"
-#		exit 1
-#	end
-#
-#	unless $db.exec('SHOW server_version_num')[0]['server_version_num'].to_i >= 90100
-#		$logger.error "You must be running PostgreSQL 9.1 or newer"
-#		exit 1
-#	end
-#
-#	begin
-#		unless $db.exec("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", true)[0]['foo'] == '1'
-#			$logger.error "Extension pg_stat_plans isn't installed"
-#			exit 1
-#		end
-#	rescue
-#		$logger.error "Table pg_extension doesn't exist - this shouldn't happen!"
-#		exit 1
-#	end
-#end
-#
 #
 #def write_config
 #
