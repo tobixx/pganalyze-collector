@@ -127,7 +127,7 @@ def parse_options(print_help=False):
 	parser.add_option('--config', action='store', type='string', dest='configfile',
 			default='$HOME/.pganalyze_collector.conf, /etc/pganalyze/collector.conf',
 			help='Specifiy alternative path for config file. Defaults: %default')
-	parser.add_option('--generate-config', action='callback', callback=write_config,
+	parser.add_option('--generate-config', action='store_true', dest='generate_config',
 			help='Writes a default configuration file to $HOME/.pganalyze_collector.conf unless specified otherwise with --config')
 	parser.add_option('--cron', '--quiet', action='store_true', dest='quiet',
 			help='Suppress all non-warning output during normal operation')
@@ -276,8 +276,7 @@ def post_data_to_web(queries):
 
 def write_config():
 
-	config =  '''
-[pganalyze]
+	sample_config =  '''[pganalyze]
 api_key: fill_me_in
 db_name: fill_me_in
 #db_username:
@@ -287,16 +286,16 @@ db_name: fill_me_in
 #psql_binary: /autodetected/from/$PATH
 '''
 
-
-	cf = configfile[0]
+	cf = config['configfile'][0]
 
 	try:
-		with os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL) as f:
-			f.write(config)
+		f = os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL)
+		os.write(f, sample_config)
+		os.close(f)
 	except Exception as e:
 		logger.error("Failed to write configfile: %s" % e)
 		sys.exit(1)
-	logger.info("Wrote standard configuration to #{cf}, please edit it and then run the script again")
+	logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
 def main():
@@ -304,6 +303,10 @@ def main():
 
 	config = parse_options()
 	logger = configure_logger()
+
+	if config['generate_config']:
+		write_config()
+		sys.exit(0)
 
 	read_config()
 
@@ -319,7 +322,7 @@ def main():
 
 		if RESET_STATS:
 			logger.debug("Resetting stats!")
-			#db.run_query("SELECT pg_stat_plans_reset()")
+			db.run_query("SELECT pg_stat_plans_reset()")
 	else:
 		logger.error("Rejected by server: %s" % output)
 
