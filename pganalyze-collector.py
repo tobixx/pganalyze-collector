@@ -63,20 +63,18 @@ class PSQL():
                         logger.debug("Encountered warnings/notices:")
 			logger.debug(stderr)
 
-		lines = stdout.split("\n")
+		lines = stdout.splitlines()
 
 		# Drop number of rows
-		lines.pop
+		lines.pop()
 		# Fetch column headers
 		columns = lines.pop(0).strip().split(colsep)
 
 		resultset = []
 		for line in lines:
-			pprint(line)
 			values = line.strip().split(colsep)
 			resultset.append(dict(zip(columns, values)))
 
-		pprint(resultset)
 		return resultset
 
 	def ping(self):
