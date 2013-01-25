@@ -187,7 +187,6 @@ def read_config():
 
 	configparser = ConfigParser.RawConfigParser()
 
-	configparser.read(configfile)
 	try:
 		configparser.read(configfile)
 	except Exception as e:
@@ -266,20 +265,39 @@ def post_data_to_web(queries):
 	to_post['data'] = json.dumps(dict({'queries': queries}))
 	to_post['api_key'] = api_key
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
-	pprint(to_post)
 
 	try:
 		res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
-		print res.read()
-		print res.getcode()
-		return res.getcode() == '200'
+		return res.read(), res.getcode()
 	except Exception as e:
 		logger.error("Failed to post data to service: %s" % e)
 
 
 
 def write_config():
-	print "I've written the config!"
+
+	config =  '''
+[pganalyze]
+api_key: fill_me_in
+db_name: fill_me_in
+#db_username:
+#db_password:
+#db_host: localhost
+#db_port: 5432
+#psql_binary: /autodetected/from/$PATH
+'''
+
+
+	cf = configfile[0]
+
+	try:
+		with os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL) as f:
+			f.write(config)
+	except Exception as e:
+		logger.error("Failed to write configfile: %s" % e)
+		sys.exit(1)
+	logger.info("Wrote standard configuration to #{cf}, please edit it and then run the script again")
+
 
 def main():
 	global config, logger
@@ -294,43 +312,16 @@ def main():
 	queries = fetch_queries()
 
 	# FIXME: Verbose error reporting for wrong API key/broken data/etc?
-	if post_data_to_web(queries):
-		if not quiet:
+	(output, code) = post_data_to_web(queries)
+	if code == 200:
+		if not config['quiet']:
 			logger.info("Submitted successfully")
 
 		if RESET_STATS:
 			logger.debug("Resetting stats!")
 			#db.run_query("SELECT pg_stat_plans_reset()")
-		else:
-			logger.error("Rejected by server")
+	else:
+		logger.error("Rejected by server: %s" % output)
 
 
 if __name__ == '__main__': main()
-
-#def write_config
-#
-#	config = <<'EOF'
-#api_key: fill_me_in
-#db_name: fill_me_in
-##db_username:
-##db_password:
-##db_host: localhost
-##db_port: 5432
-##psql_binary: /autodetected/from/$PATH
-#EOF
-#
-#
-#	cf = $configfile[0]
-#
-#	begin
-#		File.open(cf, File::WRONLY|File::CREAT|File::EXCL) { |f|
-#			f.write(config)
-#		}
-#	rescue => e
-#		$logger.error "Failed to write configfile: #{e.message}"
-#		exit 1
-#	end
-#	$logger.info "Wrote standard configuration to #{cf}, please edit it and then run the script again"
-#end
-#
-
