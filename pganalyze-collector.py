@@ -42,8 +42,6 @@ class PSQL():
 		cmd = [self.psql, "-F" + colsep, '--no-align', '--no-password', '--no-psqlrc', "-c", query]
 		lines = []
 
-		pprint(cmd)
-
 		p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 		(stdout, stderr) = p.communicate()
@@ -65,6 +63,7 @@ class PSQL():
 			for line in stderr.splitlines():
 				logger.debug(line)
 
+		stdout = stdout.decode('utf-8')
 		lines = stdout.splitlines()
 
 		# Drop number of rows
@@ -216,7 +215,51 @@ def read_config():
 
 
 def fetch_queries():
-	print "Fetching queries"
+	both_fields = ["userid", "dbid",
+		"calls", "rows", "total_time",
+		"shared_blks_hit", "shared_blks_read", "shared_blks_written",
+		"local_blks_hit", "local_blks_written",
+		"temp_blks_read", "temp_blks_written"]
+
+	query_fields = ["plan_ids", "calls_per_plan", "avg_time_per_plan",
+		"time_variance", "time_stddev"] + both_fields
+
+	plan_fields = ["planid", "had_our_search_path", "from_our_database",
+		"query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
+
+	query = "SET pg_stat_plans.explain_format TO JSON;"
+	query += "SELECT replace(pg_stat_plans_explain(p.planid, p.userid, p.dbid), chr(10), ' ') AS p_explain"
+	query += ", replace(pq.normalized_query, chr(10), ' ') AS pq_normalized_query"
+	query += ", replace(p.query, chr(10), ' ') AS p_query"
+	query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
+	query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
+	query += " FROM pg_stat_plans p"
+	query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.plan_ids)"
+	# EXPLAIN, COPY and SET commands cannot be explained
+	query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)'"
+	# Plans in pg_catalog cannot be explained
+	query += " AND p.query !~* '\\spg_catalog\\.'"
+	# We don't want our stuff in the statistics
+	query += " AND p.query !~* '\\spg_stat_plans\\s'"
+	# Remove all plans which we can't explain
+	query += " AND p.from_our_database = TRUE AND p.query_explainable = TRUE"
+	query += " AND p.planid = ANY (pq.plan_ids);"
+
+	queries = {}
+	for row in db.run_query(query, False, True):
+		query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
+		pprint(query)
+		normalized_query = query['normalized_query']
+
+		if 'normalized_query' not in queries:
+			queries[normalized_query] = query
+
+		plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
+		if 'plans' not in queries[normalized_query]:
+			queries[normalized_query]['plans'] = []
+		
+		queries[normalized_query]['plans'].append(plan)
+	return queries.values
 
 def post_data_to_web(queries):
 	print "Posting data to web"
@@ -234,7 +277,7 @@ def main():
 
 	check_database()
 
-	queries = fetch_queries
+	queries = fetch_queries()
 
 	# FIXME: Verbose error reporting for wrong API key/broken data/etc?
 	if post_data_to_web(queries):
@@ -267,49 +310,6 @@ if __name__ == '__main__': main()
 #	end
 #end
 #
-#def fetch_queries
-#	both_fields = ["userid", "dbid",
-#		"calls", "rows", "total_time",
-#		"shared_blks_hit", "shared_blks_read", "shared_blks_written",
-#		"local_blks_hit", "local_blks_written",
-#		"temp_blks_read", "temp_blks_written"]
-#
-#	query_fields = ["plan_ids", "calls_per_plan", "avg_time_per_plan",
-#		"time_variance", "time_stddev"] + both_fields
-#
-#	plan_fields = ["planid", "had_our_search_path", "from_our_database",
-#		"query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
-#
-#	query = "SET pg_stat_plans.explain_format TO JSON;"
-#	query += "SELECT replace(pg_stat_plans_explain(p.planid, p.userid, p.dbid), chr(10), ' ') AS p_explain"
-#	query += ", replace(pq.normalized_query, chr(10), ' ') AS pq_normalized_query"
-#	query += ", replace(p.query, chr(10), ' ') AS p_query"
-#	query += ", " + query_fields.map {|f| "pq.#{f} AS pq_#{f}"}.join(", ")
-#	query += ", " + plan_fields.map {|f| "p.#{f} AS p_#{f}"}.join(", ")
-#	query += " FROM pg_stat_plans p"
-#	query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.plan_ids)"
-#	# EXPLAIN, COPY and SET commands cannot be explained
-#	query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)'"
-#	# Plans in pg_catalog cannot be explained
-#	query += " AND p.query !~* '\\spg_catalog\\.'"
-#	# We don't want our stuff in the statistics
-#	query += " AND p.query !~* '\\spg_stat_plans\\s'"
-#	# Remove all plans which we can't explain
-#	query += " AND p.from_our_database = TRUE AND p.query_explainable = TRUE"
-#	query += " AND p.planid = ANY (pq.plan_ids);"
-#
-#	queries = {}
-#	$db.run_query(query, false, true).each do |row|
-#		query = {}; row.select {|k,| k[/^pq_/] }.each {|k,v| query[k.gsub("pq_", "")] = v }
-#		key = query['normalized_query']
-#		queries[key] ||= query
-#
-#		plan = {}; row.select {|k,| k[/^p_/] }.each {|k,v| plan[k.gsub("p_", "")] = v }
-#		queries[key]['plans'] ||= []
-#		queries[key]['plans'] << plan
-#	end
-#	queries.values
-#end
 #
 #def write_config
 #
