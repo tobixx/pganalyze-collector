@@ -22,7 +22,7 @@ class PSQL():
 		self.psql = psql or self._find_psql()
 
 		if not self.psql:
-			raise "Please specify path to psql binary"
+			raise Exception('Please specify path to psql binary')
 
 		logger.debug("Using %s as psql binary" % self.psql)
 		
@@ -53,15 +53,17 @@ class PSQL():
 		# When exitstatus is null, we might have only encountered notices or warnings which might be expected.
 		if p.returncode != 0 or (stderr and ignore_noncrit == False):
 			if should_raise:
-				raise stderr
+				raise Exception(stderr)
 			logger.error("Got an error during query execution, exitstatus: %s:" % p.returncode)
-			logger.error(stderr)
+			for line in stderr.splitlines():
+				logger.error(line)
 			sys.exit(1)
 
 		# If we've got anything left in stderr it's probably warning/notices. Dump them to debug
 		if stderr:
                         logger.debug("Encountered warnings/notices:")
-			logger.debug(stderr)
+			for line in stderr.splitlines():
+				logger.debug(line)
 
 		lines = stdout.splitlines()
 
@@ -105,17 +107,16 @@ def check_database():
 		logger.error("User %s isn't a superuser" % db_username)
 		sys.exit(1)
 
-	sys.exit(1)
-	if not db.run_query('SHOW server_version_num')[0]['server_version_num'].to_i >= 90100:
+	if not int(db.run_query('SHOW server_version_num')[0]['server_version_num']) >= 90100:
 		logger.error("You must be running PostgreSQL 9.1 or newer")
 		sys.exit(1)
 
 	try:
-		if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", true)[0]['foo'] == '1':
+		if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", True)[0]['foo'] == '1':
 			logger.error("Extension pg_stat_plans isn't installed")
 			sys.exit(1)
 	except Exception as e:
-		logger.error("Table pg_extension doesn't exist - this shouldn't happen!")
+		logger.error("Table pg_extension doesn't exist - this shouldn't happen")
 		sys.exit(1)
 
 def parse_options(print_help=False):
@@ -252,18 +253,6 @@ def main():
 
 if __name__ == '__main__': main()
 
-#require 'rubygems'
-#require 'json'
-#
-#require 'net/http'
-#require 'getoptlong'
-#require 'yaml'
-#require 'logger'
-#
-#require 'pp'
-#
-
-#
 #def post_data_to_web(queries)
 #	to_post = {}
 #	to_post['data'] = {'queries' => queries}.to_json
