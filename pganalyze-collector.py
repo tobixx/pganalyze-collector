@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 
-from optparse import OptionParser
-from pprint import pprint
+import os, sys, subprocess
+import time, calendar
+import re, json
+import urllib
 import logging
-import os, sys
-import re
 import ConfigParser
-import subprocess
+from optparse import OptionParser
 from stat import *
+from pprint import pprint
 
 
 API_URL = 'http://pganalyze.com/queries'
@@ -248,7 +249,6 @@ def fetch_queries():
 	queries = {}
 	for row in db.run_query(query, False, True):
 		query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
-		pprint(query)
 		normalized_query = query['normalized_query']
 
 		if 'normalized_query' not in queries:
@@ -259,10 +259,24 @@ def fetch_queries():
 			queries[normalized_query]['plans'] = []
 		
 		queries[normalized_query]['plans'].append(plan)
-	return queries.values
+	return queries.values()
 
 def post_data_to_web(queries):
-	print "Posting data to web"
+	to_post = {}
+	to_post['data'] = json.dumps(dict({'queries': queries}))
+	to_post['api_key'] = api_key
+	to_post['collected_at'] = calendar.timegm(time.gmtime())
+	pprint(to_post)
+
+	try:
+		res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
+		print res.read()
+		print res.getcode()
+		return res.getcode() == '200'
+	except Exception as e:
+		logger.error("Failed to post data to service: %s" % e)
+
+
 
 def write_config():
 	print "I've written the config!"
@@ -282,35 +296,17 @@ def main():
 	# FIXME: Verbose error reporting for wrong API key/broken data/etc?
 	if post_data_to_web(queries):
 		if not quiet:
-			print "Submitted"
-			#logger.info "Submitted successfully"
+			logger.info("Submitted successfully")
 
 		if RESET_STATS:
-			print "Resetting stats"
-			#logger.debug "Resetting stats!"
+			logger.debug("Resetting stats!")
 			#db.run_query("SELECT pg_stat_plans_reset()")
 		else:
-			print "Rejected"
-			#logger.error "Rejected by server"
+			logger.error("Rejected by server")
 
 
 if __name__ == '__main__': main()
 
-#def post_data_to_web(queries)
-#	to_post = {}
-#	to_post['data'] = {'queries' => queries}.to_json
-#	to_post['api_key'] = $api_key
-#	to_post['collected_at'] = Time.now.to_i
-#
-#	begin
-#		res = Net::HTTP.post_form(URI.parse(API_URL), to_post)
-#		return res.code == '200'
-#	rescue => e
-#		$logger.error "Failed to post data to service: #{e.message}"
-#	end
-#end
-#
-#
 #def write_config
 #
 #	config = <<'EOF'
