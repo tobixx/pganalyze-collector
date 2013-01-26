@@ -15,7 +15,7 @@ API_URL = 'http://pganalyze.com/queries'
 RESET_STATS = True
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.0.1-dev'
+VERSION = '0.1.0-dev'
 
 
 class PSQL():
@@ -265,6 +265,7 @@ def post_data_to_web(queries):
 	to_post['data'] = json.dumps(dict({'queries': queries}))
 	to_post['api_key'] = api_key
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
+	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
 
 	try:
 		res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
@@ -314,7 +315,6 @@ def main():
 
 	queries = fetch_queries()
 
-	# FIXME: Verbose error reporting for wrong API key/broken data/etc?
 	(output, code) = post_data_to_web(queries)
 	if code == 200:
 		if not config['quiet']:
