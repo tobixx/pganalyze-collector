@@ -70,7 +70,7 @@ class PSQL():
 
 		colsep = unichr(0x2764)
 
-		cmd = [self.psql, "-F" + colsep, '--no-align', '--no-password', '--no-psqlrc', "-c", query]
+		cmd = [self.psql, "-F" + colsep.encode('utf-8'), '--no-align', '--no-password', '--no-psqlrc', "-c", query]
 		lines = []
 
 		p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
