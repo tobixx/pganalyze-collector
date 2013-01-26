@@ -251,7 +251,7 @@ def fetch_queries():
 		"local_blks_hit", "local_blks_written",
 		"temp_blks_read", "temp_blks_written"]
 
-	query_fields = ["plan_ids", "calls_per_plan", "avg_time_per_plan",
+	query_fields = ["planids", "calls_per_plan", "avg_time_per_plan",
 		"time_variance", "time_stddev"] + both_fields
 
 	plan_fields = ["planid", "had_our_search_path", "from_our_database",
@@ -264,7 +264,7 @@ def fetch_queries():
 	query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
 	query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
 	query += " FROM pg_stat_plans p"
-	query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.plan_ids)"
+	query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.planids)"
 	# EXPLAIN, COPY and SET commands cannot be explained
 	query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)'"
 	# Plans in pg_catalog cannot be explained
@@ -273,7 +273,7 @@ def fetch_queries():
 	query += " AND p.query !~* '\\spg_stat_plans\\s'"
 	# Remove all plans which we can't explain
 	query += " AND p.from_our_database = TRUE AND p.query_explainable = TRUE"
-	query += " AND p.planid = ANY (pq.plan_ids);"
+	query += " AND p.planid = ANY (pq.planids);"
 
 	queries = {}
 	for row in db.run_query(query, False, True):
