@@ -204,6 +204,10 @@ def read_config():
 			logger.debug("%s isn't a regular file" % file)
 			continue
 
+		if int(oct(mode)[-2:]) != 0:
+			logger.error("Configfile is accessible by other users, please run `chmod go-rwx %s`" % file)
+			sys.exit(1)
+
 		if not os.access(file, os.R_OK):
 			logger.debug("%s isn't readable" % file)
 			continue
@@ -320,7 +324,7 @@ db_name: fill_me_in
 	cf = config['configfile'][0]
 
 	try:
-		f = os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL)
+		f = os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0600)
 		os.write(f, sample_config)
 		os.close(f)
 	except Exception as e:
