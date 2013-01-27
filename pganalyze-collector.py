@@ -3,13 +3,31 @@
 # Copyright (c) 2013, pganalyze Team <team@pganalyze.com>
 #  All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-# * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-# * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-# * Neither the name of pganalyze nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+# * Redistributions of source code must retain the above copyright notice, this
+# list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# * Neither the name of pganalyze nor the names of its contributors may be used
+# to endorse or promote products derived from this software without specific
+# prior written permission.
 # 
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 
 
 import os, sys, subprocess
@@ -27,7 +45,7 @@ API_URL = 'http://pganalyze.com/queries'
 RESET_STATS = True
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.1.0'
+VERSION = '0.1.1'
 
 
 class PSQL():
@@ -52,7 +70,7 @@ class PSQL():
 
 		colsep = unichr(0x2764)
 
-		cmd = [self.psql, "-F" + colsep, '--no-align', '--no-password', '--no-psqlrc', "-c", query]
+		cmd = [self.psql, "-F" + colsep.encode('utf-8'), '--no-align', '--no-password', '--no-psqlrc', "-c", query]
 		lines = []
 
 		p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -233,7 +251,7 @@ def fetch_queries():
 		"local_blks_hit", "local_blks_written",
 		"temp_blks_read", "temp_blks_written"]
 
-	query_fields = ["plan_ids", "calls_per_plan", "avg_time_per_plan",
+	query_fields = ["planids", "calls_per_plan", "avg_time_per_plan",
 		"time_variance", "time_stddev"] + both_fields
 
 	plan_fields = ["planid", "had_our_search_path", "from_our_database",
@@ -246,7 +264,7 @@ def fetch_queries():
 	query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
 	query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
 	query += " FROM pg_stat_plans p"
-	query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.plan_ids)"
+	query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.planids)"
 	# EXPLAIN, COPY and SET commands cannot be explained
 	query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)'"
 	# Plans in pg_catalog cannot be explained
@@ -255,7 +273,7 @@ def fetch_queries():
 	query += " AND p.query !~* '\\spg_stat_plans\\s'"
 	# Remove all plans which we can't explain
 	query += " AND p.from_our_database = TRUE AND p.query_explainable = TRUE"
-	query += " AND p.planid = ANY (pq.plan_ids);"
+	query += " AND p.planid = ANY (pq.planids);"
 
 	queries = {}
 	for row in db.run_query(query, False, True):
