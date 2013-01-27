@@ -45,7 +45,7 @@ API_URL = 'http://pganalyze.com/queries'
 RESET_STATS = True
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.1.1-dev'
+VERSION = '0.1.2-dev'
 
 
 class PSQL():
