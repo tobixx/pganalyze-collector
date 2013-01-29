@@ -42,10 +42,9 @@ from pprint import pprint
 
 
 API_URL = 'http://pganalyze.com/queries'
-RESET_STATS = True
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.1.1'
+VERSION = '0.1.2'
 
 
 class PSQL():
@@ -70,12 +69,12 @@ class PSQL():
 
 		colsep = unichr(0x2764)
 
-		cmd = [self.psql, "-F" + colsep.encode('utf-8'), '--no-align', '--no-password', '--no-psqlrc', "-c", query]
+		cmd = [self.psql, "-F" + colsep.encode('utf-8'), '--no-align', '--no-password', '--no-psqlrc']
 		lines = []
 
 		p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-		(stdout, stderr) = p.communicate()
+		(stdout, stderr) = p.communicate(query)
 
 
 		# Fail on all invocations where exitstatus is non-null
@@ -99,6 +98,9 @@ class PSQL():
 
 		# Drop number of rows
 		lines.pop()
+		# FIXME: Skip first row if it's from a SET statement
+		if lines[0] == 'SET':
+			lines.pop(0)
 		# Fetch column headers
 		columns = lines.pop(0).strip().split(colsep)
 
@@ -159,8 +161,12 @@ def parse_options(print_help=False):
 			help='Specifiy alternative path for config file. Defaults: %default')
 	parser.add_option('--generate-config', action='store_true', dest='generate_config',
 			help='Writes a default configuration file to $HOME/.pganalyze_collector.conf unless specified otherwise with --config')
-	parser.add_option('--cron', '--quiet', action='store_true', dest='quiet',
+	parser.add_option('--cron', '-q', action='store_true', dest='quiet',
 			help='Suppress all non-warning output during normal operation')
+	parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
+			help='Print data that would get sent to web service and exit afterwards.')
+	parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
+			help='Don\'t reset statistics after posting to web. Only use for testing purposes.') 
 
 	if print_help:
 		parser.print_help()
@@ -257,9 +263,7 @@ def fetch_queries():
 	plan_fields = ["planid", "had_our_search_path", "from_our_database",
 		"query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
-	query = "SET pg_stat_plans.explain_format TO JSON;"
-	query += "SELECT replace(pg_stat_plans_explain(p.planid, p.userid, p.dbid), chr(10), ' ') AS p_explain"
-	query += ", replace(pq.normalized_query, chr(10), ' ') AS pq_normalized_query"
+	query = "SELECT replace(pq.normalized_query, chr(10), ' ') AS pq_normalized_query"
 	query += ", replace(p.query, chr(10), ' ') AS p_query"
 	query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
 	query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
@@ -272,22 +276,42 @@ def fetch_queries():
 	# We don't want our stuff in the statistics
 	query += " AND p.query !~* '\\spg_stat_plans\\s'"
 	# Remove all plans which we can't explain
-	query += " AND p.from_our_database = TRUE AND p.query_explainable = TRUE"
+	query += " AND p.from_our_database = TRUE"
 	query += " AND p.planid = ANY (pq.planids);"
 
+	fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
+	fetch_plan += "SELECT replace(pg_stat_plans_explain(%s, %s, %s), chr(10), ' ') AS explain"
+
 	queries = {}
+
+	# Fetch joined list of all queries and plans
 	for row in db.run_query(query, False, True):
+
+		# merge pg_stat_plans_queries values into result
 		query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
 		normalized_query = query['normalized_query']
 
+		# if we haven't seen the query yet - add it
 		if 'normalized_query' not in queries:
 			queries[normalized_query] = query
 
+		# merge pg_stat_plans values into result
 		plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
+
+		# initialize plans array
 		if 'plans' not in queries[normalized_query]:
 			queries[normalized_query]['plans'] = []
-		
-		queries[normalized_query]['plans'].append(plan)
+
+		# try explaining the query if pg_stat_plans thinks it's possible
+		if plan['query_explainable'] == 't':
+			try:
+				result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True, False)
+				plan['explain'] = result[0]['explain'] 
+			except Exception as e:
+				plan['explain_error'] = str(e)
+			
+			queries[normalized_query]['plans'].append(plan)
+
 	return queries.values()
 
 def post_data_to_web(queries):
@@ -296,6 +320,20 @@ def post_data_to_web(queries):
 	to_post['api_key'] = api_key
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
 	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
+
+	if config['dryrun']:
+		logger.info("Dumping data that would get posted")
+
+		to_post['data'] = json.loads(to_post['data'])
+		for query in to_post['data']['queries']:
+			for plan in query['plans']:
+				if 'explain' in plan:
+					plan['explain'] = json.loads(plan['explain'])
+		pprint(to_post)
+
+		logger.info("Exiting.")
+		sys.exit(0)
+
 
 	try:
 		res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
@@ -350,7 +388,7 @@ def main():
 		if not config['quiet']:
 			logger.info("Submitted successfully")
 
-		if RESET_STATS:
+		if not config['noreset']:
 			logger.debug("Resetting stats!")
 			db.run_query("SELECT pg_stat_plans_reset()")
 	else:
