@@ -260,9 +260,9 @@ def fetch_queries():
 	plan_fields = ["planid", "had_our_search_path", "from_our_database",
 		"query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
-	query = "SET pg_stat_plans.explain_format TO JSON;"
-	query += "SELECT replace(pg_stat_plans_explain(p.planid, p.userid, p.dbid), chr(10), ' ') AS p_explain"
-	query += ", replace(pq.normalized_query, chr(10), ' ') AS pq_normalized_query"
+	#	query = "SET pg_stat_plans.explain_format TO JSON; "
+#	query += "SELECT replace(pg_stat_plans_explain(p.planid, p.userid, p.dbid), chr(10), ' ') AS p_explain"
+	query = "SELECT replace(pq.normalized_query, chr(10), ' ') AS pq_normalized_query"
 	query += ", replace(p.query, chr(10), ' ') AS p_query"
 	query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
 	query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
@@ -278,6 +278,9 @@ def fetch_queries():
 	query += " AND p.from_our_database = TRUE AND p.query_explainable = TRUE"
 	query += " AND p.planid = ANY (pq.planids);"
 
+	fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
+	fetch_plan += "SELECT replace(pg_stat_plans_explain(%s, %s, %s), chr(10), ' ') AS explain"
+
 	queries = {}
 	for row in db.run_query(query, False, True):
 		query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
@@ -289,6 +292,8 @@ def fetch_queries():
 		plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
 		if 'plans' not in queries[normalized_query]:
 			queries[normalized_query]['plans'] = []
+
+		plan['explain'] = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), False, True)[0]['explain'] 
 		
 		queries[normalized_query]['plans'].append(plan)
 	return queries.values()
@@ -305,7 +310,8 @@ def post_data_to_web(queries):
 		to_post['data'] = json.loads(to_post['data'])
 		for query in to_post['data']['queries']:
 			for plan in query['plans']:
-				plan['explain'] = json.loads(plan['explain'])
+				if 'explain' in plan:
+					plan['explain'] = json.loads(plan['explain'])
 		pprint(to_post)
 		logger.info("Exiting.")
 		sys.exit(0)
