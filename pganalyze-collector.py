@@ -42,7 +42,6 @@ from pprint import pprint
 
 
 API_URL = 'http://pganalyze.com/queries'
-RESET_STATS = True
 
 MYNAME = 'pganalyze-collector'
 VERSION = '0.1.1-dev'
@@ -163,6 +162,8 @@ def parse_options(print_help=False):
 			help='Suppress all non-warning output during normal operation')
 	parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
 			help='Print data that would get sent to web service and exit afterwards.')
+	parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
+			help='Don\'t reset statistics after posting to web. Only use for testing purposes.') 
 
 	if print_help:
 		parser.print_help()
@@ -363,7 +364,7 @@ def main():
 		if not config['quiet']:
 			logger.info("Submitted successfully")
 
-		if RESET_STATS:
+		if not config['noreset']:
 			logger.debug("Resetting stats!")
 			db.run_query("SELECT pg_stat_plans_reset()")
 	else:
