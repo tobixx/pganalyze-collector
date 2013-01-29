@@ -159,8 +159,10 @@ def parse_options(print_help=False):
 			help='Specifiy alternative path for config file. Defaults: %default')
 	parser.add_option('--generate-config', action='store_true', dest='generate_config',
 			help='Writes a default configuration file to $HOME/.pganalyze_collector.conf unless specified otherwise with --config')
-	parser.add_option('--cron', '--quiet', action='store_true', dest='quiet',
+	parser.add_option('--cron', '-q', action='store_true', dest='quiet',
 			help='Suppress all non-warning output during normal operation')
+	parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
+			help='Print data that would get sent to web service and exit afterwards.')
 
 	if print_help:
 		parser.print_help()
@@ -296,6 +298,17 @@ def post_data_to_web(queries):
 	to_post['api_key'] = api_key
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
 	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
+
+	if config['dryrun']:
+		logger.info("Dumping data that would get posted")
+		to_post['data'] = json.loads(to_post['data'])
+		for query in to_post['data']['queries']:
+			for plan in query['plans']:
+				plan['explain'] = json.loads(plan['explain'])
+		pprint(to_post)
+		logger.info("Exiting.")
+		sys.exit(0)
+
 
 	try:
 		res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
