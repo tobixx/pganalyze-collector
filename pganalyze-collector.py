@@ -44,7 +44,7 @@ from pprint import pprint
 API_URL = 'http://pganalyze.com/queries'
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.1.2'
+VERSION = '0.1.3'
 
 
 class PSQL():
@@ -58,10 +58,10 @@ class PSQL():
 		
 		# Setting up environment for psql
 		os.environ['PGDATABASE'] = dbname
-		os.environ['PGUSER'] = username or ''
-		os.environ['PGPASSWORD'] = password or ''
-		os.environ['PGHOST'] = host or 'localhost'
-		os.environ['PGPORT'] = port or '5432'
+		if username: os.environ['PGUSER'] = username
+		if password: os.environ['PGPASSWORD'] = password
+		if host: os.environ['PGHOST'] = host
+		if port: os.environ['PGPORT'] = port
 
 	def run_query(self, query, should_raise=False, ignore_noncrit=False):
 
@@ -310,7 +310,7 @@ def fetch_queries():
 			except Exception as e:
 				plan['explain_error'] = str(e)
 			
-			queries[normalized_query]['plans'].append(plan)
+		queries[normalized_query]['plans'].append(plan)
 
 	return queries.values()
 
