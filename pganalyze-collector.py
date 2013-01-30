@@ -58,10 +58,10 @@ class PSQL():
 		
 		# Setting up environment for psql
 		os.environ['PGDATABASE'] = dbname
-		os.environ['PGUSER'] = username or ''
-		os.environ['PGPASSWORD'] = password or ''
-		os.environ['PGHOST'] = host or 'localhost'
-		os.environ['PGPORT'] = port or '5432'
+		if username: os.environ['PGUSER'] = username
+		if password: os.environ['PGPASSWORD'] = password
+		if host: os.environ['PGHOST'] = host
+		if port: os.environ['PGPORT'] = port
 
 	def run_query(self, query, should_raise=False, ignore_noncrit=False):
 
