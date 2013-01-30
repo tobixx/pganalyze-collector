@@ -310,7 +310,7 @@ def fetch_queries():
 			except Exception as e:
 				plan['explain_error'] = str(e)
 			
-			queries[normalized_query]['plans'].append(plan)
+		queries[normalized_query]['plans'].append(plan)
 
 	return queries.values()
 
