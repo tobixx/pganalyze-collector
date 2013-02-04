@@ -41,7 +41,7 @@ from stat import *
 from pprint import pprint
 
 
-API_URL = 'http://pganalyze.com/queries'
+API_URL = 'https://pganalyze.com/queries'
 
 MYNAME = 'pganalyze-collector'
 VERSION = '0.1.2-dev'
