@@ -44,7 +44,7 @@ from pprint import pprint
 API_URL = 'https://pganalyze.com/queries'
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.1.4'
+VERSION = '0.1.5-dev'
 
 
 class PSQL():
