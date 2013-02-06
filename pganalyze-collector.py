@@ -41,10 +41,10 @@ from stat import *
 from pprint import pprint
 
 
-API_URL = 'http://pganalyze.com/queries'
+API_URL = 'https://pganalyze.com/queries'
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.1.3'
+VERSION = '0.1.4'
 
 
 class PSQL():
@@ -210,6 +210,10 @@ def read_config():
 			logger.debug("%s isn't a regular file" % file)
 			continue
 
+		if int(oct(mode)[-2:]) != 0:
+			logger.error("Configfile is accessible by other users, please run `chmod go-rwx %s`" % file)
+			sys.exit(1)
+
 		if not os.access(file, os.R_OK):
 			logger.debug("%s isn't readable" % file)
 			continue
@@ -236,7 +240,8 @@ def read_config():
 		logger.debug("%s => %s" % (k, v))
 
 	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
-	db_host = configdump.get('db_host')
+	# Set db_host to localhost if not specified to force IP connection - most people don't use socket ident auth 
+	db_host = configdump.get('db_host') or 'localhost'
 	db_port = configdump.get('db_port')
 	db_username = configdump.get('db_username')
 	db_password = configdump.get('db_password')
@@ -358,7 +363,7 @@ db_name: fill_me_in
 	cf = config['configfile'][0]
 
 	try:
-		f = os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL)
+		f = os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0600)
 		os.write(f, sample_config)
 		os.close(f)
 	except Exception as e:
