@@ -240,7 +240,8 @@ def read_config():
 		logger.debug("%s => %s" % (k, v))
 
 	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
-	db_host = configdump.get('db_host')
+	# Set db_host to localhost if not specified to force IP connection - most people don't use socket ident auth 
+	db_host = configdump.get('db_host') or 'localhost'
 	db_port = configdump.get('db_port')
 	db_username = configdump.get('db_username')
 	db_password = configdump.get('db_password')
