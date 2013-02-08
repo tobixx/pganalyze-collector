@@ -167,6 +167,10 @@ def parse_options(print_help=False):
 			help='Print data that would get sent to web service and exit afterwards.')
 	parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
 			help='Don\'t reset statistics after posting to web. Only use for testing purposes.') 
+	parser.add_option('--no-query-parameters', action='store_true', dest='noqueryparameters',
+			help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
+	#	parser.add_option('--scrub-query-paramters', action='store_true", dest='scrubqueryparamters',
+	#		help='...')
 
 	if print_help:
 		parser.print_help()
@@ -304,6 +308,10 @@ def fetch_queries():
 		# merge pg_stat_plans values into result
 		plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
 
+		# Delete parmaterized example queries if wanted
+		if option['noqueryparameters']:
+			del(plan['query'])
+
 		# initialize plans array
 		if 'plans' not in queries[normalized_query]:
 			queries[normalized_query]['plans'] = []
@@ -326,7 +334,10 @@ def post_data_to_web(queries):
 	to_post['api_key'] = api_key
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
 	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
+	to_post['options'] = {}
+	to_post['options']['no_query_parameters'] = option['noqueryparameters']
 
+	# These will dump the Python dict with Python bools. The posted values will have json semantics (e.g. true/false/null for bools)
 	if option['dryrun']:
 		logger.info("Dumping data that would get posted")
 
