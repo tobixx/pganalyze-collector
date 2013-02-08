@@ -80,11 +80,20 @@ class SystemInformation():
 			except Exception as e:
 				logger.error("Error while collecting system manufacturer/model via dmidecode: %s" % e)
 
-
 		return os
 
-	def CPU():
-		return
+
+	def CPU(self):
+		return None if self.system != 'Linux'
+
+		with open('/proc/stat', 'r') as f:
+			procstat = f.readlines() 
+
+		with open('/proc/cpuinfo', 'r') as f:
+			cpuinfo = f.readlines()
+
+		pprint(procstat)
+
 		# /proc/stat
 		# CPU time spent
 		# Interrupts, ctxt switches
@@ -92,7 +101,7 @@ class SystemInformation():
 		# /proc/cpuinfo
 		# Model, sockets, cores,
 	
-	def Disk():
+	def Disk(self):
 		return
 		# Name of mountpoint - http://stackoverflow.com/questions/4453602/how-to-find-the-mountpoint-a-file-resides-on
 		# Data directory - SHOW data_directory
@@ -108,7 +117,7 @@ class SystemInformation():
 		#
 		# Mapping mountpoint -> device: stat data directory, extract major/minor from dev, use /sys/dev/block/<major:minor>
 	
-	def Memory():
+	def Memory(self):
 		return
 		# /proc/meminfo
 		# Memory Utilization
@@ -407,10 +416,11 @@ def fetch_system_information():
 
 	# OS
 	info['os'] = SI.OS()
-	pprint(info)
-	sys.exit(1)
 
 	# CPU
+	info['cpu'] = SI.CPU()
+	pprint(info)
+	sys.exit(1)
 	
 	# Memory
 	
