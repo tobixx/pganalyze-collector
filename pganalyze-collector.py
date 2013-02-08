@@ -38,6 +38,7 @@ import logging
 import ConfigParser
 from optparse import OptionParser
 from stat import *
+import platform
 from pprint import pprint
 
 
@@ -46,6 +47,71 @@ API_URL = 'https://pganalyze.com/queries'
 MYNAME = 'pganalyze-collector'
 VERSION = '0.1.5-dev'
 
+
+class SystemInformation():
+
+	def __init__(self):
+		self.system = platform.system()
+		if self.system != 'Linux':
+			raise Exception("Unsupported system: %s" % self.system)
+
+	def OS(self):
+		os = {}
+		os['system'] = platform.system()
+		if self.system == 'Linux':
+			(os['distribution'], os['distribution_version']) = platform.linux_distribution()[0:2]
+		elif self.system == 'Darwin':
+			os['distribution'] = 'OS X'
+			os['distribution_version'] = platform.mac_ver()[0]
+
+		os['architecture'] = platform.machine()
+		os['kernel_version'] = platform.release()
+
+		dmidecode = find_executable_in_path('dmidecode')
+		if dmidecode:
+			try:
+				vendor = subprocess.check_output([dmidecode, '-s', 'system-manufacturer']).strip()
+				model = subprocess.check_output([dmidecode, '-s', 'system-product-name']).strip()
+				if vendor and model:
+					os['server_model'] = "%s %s" % (vendor, model)
+
+
+			except Exception as e:
+				logger.error("Problem: %s" % e)
+
+
+		return os
+
+	def CPU():
+		return
+		# /proc/stat
+		# CPU time spent
+		# Interrupts, ctxt switches
+		# http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=blob;f=Documentation/filesystems/proc.txt;h=fd8d0d594fc7c9fd6bd1a5baa107968a9c9fab01;hb=HEAD#l1197
+		# /proc/cpuinfo
+		# Model, sockets, cores,
+	
+	def Disk():
+		return
+		# Name of mountpoint - http://stackoverflow.com/questions/4453602/how-to-find-the-mountpoint-a-file-resides-on
+		# Data directory - SHOW data_directory
+		# pg_xlog - verify it's on the same device
+		# device vendor & model - /sys/dev/block/../device/vendor & model
+		#
+		# sysfs:
+		# https://github.com/terrorobe/munin-plugins/blob/master/alumni/linux_diskstat_#L501
+		# Latency
+		# IOPS
+		# Utilization
+		# Usage
+		#
+		# Mapping mountpoint -> device: stat data directory, extract major/minor from dev, use /sys/dev/block/<major:minor>
+	
+	def Memory():
+		return
+		# /proc/meminfo
+		# Memory Utilization
+		# Swapping
 
 class PSQL():
 	def __init__(self, dbname, username=None, password=None, psql=None, host=None, port=None):
@@ -117,13 +183,17 @@ class PSQL():
 		return True
 
 	def _find_psql(self):
-		cmd = 'psql'
-		for path in os.environ['PATH'].split(os.pathsep):
-			test = "%s/%s" % (path, cmd)
-			logger.debug("Testing %s" % test)
-			if os.path.isfile(test) and os.access(test, os.X_OK):
-				return test
-		return None
+		logger.debug("Searching for PSQL binary")
+		return find_executable_in_path('psql')
+
+
+def find_executable_in_path(cmd):
+	for path in os.environ['PATH'].split(os.pathsep):
+		test = "%s/%s" % (path, cmd)
+		logger.debug("Testing %s" % test)
+		if os.path.isfile(test) and os.access(test, os.X_OK):
+			return test
+	return None
 
 
 
@@ -150,6 +220,7 @@ def check_database():
 	except Exception as e:
 		logger.error("Table pg_extension doesn't exist - this shouldn't happen")
 		sys.exit(1)
+
 
 def parse_options(print_help=False):
 	parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
@@ -328,9 +399,31 @@ def fetch_queries():
 
 	return queries.values()
 
-def post_data_to_web(queries):
+def fetch_system_information():
+
+	SI = SystemInformation()
+	info = {}
+
+	# OS
+	info['os'] = SI.OS()
+	pprint(info)
+	sys.exit(1)
+
+	# CPU
+	
+	# Memory
+	
+	# IO
+
+	# Process scheduler
+
+	# Hardware
+
+
+
+def post_data_to_web(data):
 	to_post = {}
-	to_post['data'] = json.dumps(dict({'queries': queries}))
+	to_post['data'] = json.dumps(data)
 	to_post['api_key'] = api_key
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
 	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
@@ -399,9 +492,11 @@ def main():
 
 	check_database()
 
-	queries = fetch_queries()
+	data = {}
+	data['queries'] = fetch_queries()
+	data['system'] = fetch_system_information()
 
-	(output, code) = post_data_to_web(queries)
+	(output, code) = post_data_to_web(data)
 	if code == 200:
 		if not option['quiet']:
 			logger.info("Submitted successfully")
