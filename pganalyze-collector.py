@@ -67,6 +67,7 @@ class SystemInformation():
 		os['architecture'] = platform.machine()
 		os['kernel_version'] = platform.release()
 
+		# This only works when run as root - maybe drop again?
 		dmidecode = find_executable_in_path('dmidecode')
 		if dmidecode:
 			try:
@@ -77,7 +78,7 @@ class SystemInformation():
 
 
 			except Exception as e:
-				logger.error("Problem: %s" % e)
+				logger.error("Error while collecting system manufacturer/model via dmidecode: %s" % e)
 
 
 		return os
