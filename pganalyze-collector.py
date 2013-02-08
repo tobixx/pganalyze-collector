@@ -357,6 +357,7 @@ def post_data_to_web(queries):
 		return res.read(), res.getcode()
 	except Exception as e:
 		logger.error("Failed to post data to service: %s" % e)
+		sys.exit(1)
 
 
 
