@@ -44,7 +44,7 @@ from pprint import pprint
 API_URL = 'https://pganalyze.com/queries'
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.1.4'
+VERSION = '0.1.5-dev'
 
 
 class PSQL():
@@ -128,7 +128,7 @@ class PSQL():
 
 
 def check_database():
-	global db, db_host, db_port, db_username, db_password, db_name
+	global db
 	db = PSQL(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
 
 	if not db.ping():
@@ -157,7 +157,7 @@ def parse_options(print_help=False):
 	parser.add_option('-v', '--verbose', action='store_true', dest='verbose',
 			help='Print verbose debug information')
 	parser.add_option('--config', action='store', type='string', dest='configfile',
-			default='$HOME/.pganalyze_collector.conf, /etc/pganalyze/collector.conf',
+			default='$HOME/.pganalyze_collector.conf, /etc/pganalyze_collector.conf',
 			help='Specifiy alternative path for config file. Defaults: %default')
 	parser.add_option('--generate-config', action='store_true', dest='generate_config',
 			help='Writes a default configuration file to $HOME/.pganalyze_collector.conf unless specified otherwise with --config')
@@ -167,6 +167,10 @@ def parse_options(print_help=False):
 			help='Print data that would get sent to web service and exit afterwards.')
 	parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
 			help='Don\'t reset statistics after posting to web. Only use for testing purposes.') 
+	parser.add_option('--no-query-parameters', action='store_true', dest='noqueryparameters',
+			help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
+	#	parser.add_option('--scrub-query-paramters', action='store_true", dest='scrubqueryparamters',
+	#		help='...')
 
 	if print_help:
 		parser.print_help()
@@ -182,7 +186,7 @@ def parse_options(print_help=False):
 def configure_logger():
 	logtemp = logging.getLogger(MYNAME)
 
-	if config['verbose']:
+	if option['verbose']:
 		logtemp.setLevel(logging.DEBUG)
 	else:
 		logtemp.setLevel(logging.INFO)
@@ -199,7 +203,7 @@ def read_config():
 	logger.debug("Reading config")
 
 	configfile = None
-	for file in config['configfile']:
+	for file in option['configfile']:
 		try:
 			mode = os.stat(file).st_mode
 		except Exception as e:
@@ -239,6 +243,7 @@ def read_config():
 		configdump[k] = v
 		logger.debug("%s => %s" % (k, v))
 
+	# FIXME: Could do with a dict
 	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
 	# Set db_host to localhost if not specified to force IP connection - most people don't use socket ident auth 
 	db_host = configdump.get('db_host') or 'localhost'
@@ -303,6 +308,10 @@ def fetch_queries():
 		# merge pg_stat_plans values into result
 		plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
 
+		# Delete parmaterized example queries if wanted
+		if option['noqueryparameters']:
+			del(plan['query'])
+
 		# initialize plans array
 		if 'plans' not in queries[normalized_query]:
 			queries[normalized_query]['plans'] = []
@@ -325,8 +334,11 @@ def post_data_to_web(queries):
 	to_post['api_key'] = api_key
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
 	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
+	to_post['options'] = {}
+	to_post['options']['no_query_parameters'] = option['noqueryparameters']
 
-	if config['dryrun']:
+	# These will dump the Python dict with Python bools. The posted values will have json semantics (e.g. true/false/null for bools)
+	if option['dryrun']:
 		logger.info("Dumping data that would get posted")
 
 		to_post['data'] = json.loads(to_post['data'])
@@ -360,7 +372,7 @@ db_name: fill_me_in
 #psql_binary: /autodetected/from/$PATH
 '''
 
-	cf = config['configfile'][0]
+	cf = option['configfile'][0]
 
 	try:
 		f = os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0600)
@@ -373,12 +385,12 @@ db_name: fill_me_in
 
 
 def main():
-	global config, logger
+	global option, logger
 
-	config = parse_options()
+	option = parse_options()
 	logger = configure_logger()
 
-	if config['generate_config']:
+	if option['generate_config']:
 		write_config()
 		sys.exit(0)
 
@@ -390,10 +402,10 @@ def main():
 
 	(output, code) = post_data_to_web(queries)
 	if code == 200:
-		if not config['quiet']:
+		if not option['quiet']:
 			logger.info("Submitted successfully")
 
-		if not config['noreset']:
+		if not option['noreset']:
 			logger.debug("Resetting stats!")
 			db.run_query("SELECT pg_stat_plans_reset()")
 	else:
