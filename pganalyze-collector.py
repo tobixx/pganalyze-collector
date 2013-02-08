@@ -128,7 +128,7 @@ class PSQL():
 
 
 def check_database():
-	global db, db_host, db_port, db_username, db_password, db_name
+	global db
 	db = PSQL(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
 
 	if not db.ping():
@@ -239,7 +239,7 @@ def read_config():
 		configdump[k] = v
 		logger.debug("%s => %s" % (k, v))
 
-	# FIXME: Is this the right way to make global variables?
+	# FIXME: Could do with a dict
 	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
 	# Set db_host to localhost if not specified to force IP connection - most people don't use socket ident auth 
 	db_host = configdump.get('db_host') or 'localhost'
