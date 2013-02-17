@@ -84,23 +84,77 @@ class SystemInformation():
 
 
 	def CPU(self):
-		return None if self.system != 'Linux'
+		result = {}
+		if self.system != 'Linux': return None
 
 		with open('/proc/stat', 'r') as f:
-			procstat = f.readlines() 
+			procstat = f.readlines()
+
+		# Fetch combined CPU counter from lines
+		os_counters = filter(lambda x: x.find('cpu ') == 0, procstat)[0]
+
+		# tokenize, strip row heading
+		os_counters = os_counters.split()[1:]
+
+		# Correct all values to msec
+		kernel_hz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
+		os_counters = map(lambda x: int(x) * (1000 / kernel_hz), os_counters)
+
+		os_counter_names = ['user_msec', 'nice_msec', 'system_msec', 'idle_msec', 'iowait_msec', 'irq_msec', 'softirq_msec', 'steal_msec', 'guest_msec', 'guest_nice_msec']
+
+		result['busy_times'] = dict(zip(os_counter_names, os_counters))
+
 
 		with open('/proc/cpuinfo', 'r') as f:
 			cpuinfo = f.readlines()
 
-		pprint(procstat)
+		# Trim excessive whitespace in strings, return two elements per line
+		cpuinfo = map(lambda x: " ".join(x.split()).split(' : '), cpuinfo)
 
+		hardware = {}
+		hardware['model'] = next(l[1] for l in cpuinfo if l[0] == 'model name')
+		hardware['cache_size'] = next(l[1] for l in cpuinfo if l[0] == 'cache size')
+		hardware['speed_MHz'] = next(l[1] for l in cpuinfo if l[0] == 'cpu MHz')
+		hardware['sockets'] = int(max([l[1] for l in cpuinfo if l[0] == 'physical id'])) + 1
+		hardware['cores_per_socket'] = next(l[1] for l in cpuinfo if l[0] == 'cpu cores')
+
+		result['hardware'] = hardware
+
+
+		return(result)
+
+
+	def Scheduler(self):
+		result = {}
+
+		with open('/proc/stat', 'r') as f:
+			os_counters = f.readlines()
+
+		os_counters = [l.split() for l in os_counters if len(l) > 1]
+
+
+		result['interrupts'] = next(l[1] for l in os_counters if l[0] == 'intr')
+		result['context_switches'] = next(l[1] for l in os_counters if l[0] == 'ctxt')
+		result['procs_running'] = next(l[1] for l in os_counters if l[0] == 'procs_running')
+		result['procs_blocked'] = next(l[1] for l in os_counters if l[0] == 'procs_blocked')
+		result['procs_created'] = next(l[1] for l in os_counters if l[0] == 'processes')
+
+
+		with open('/proc/loadavg', 'r') as f:
+			loadavg = f.readlines()
+
+		loadavg = loadavg[0].split()
+
+		result['loadavg_1min'] = loadavg[0] 
+		result['loadavg_5min'] = loadavg[1] 
+		result['loadavg_15min'] = loadavg[2] 
+
+		return(result)
 		# /proc/stat
-		# CPU time spent
-		# Interrupts, ctxt switches
-		# http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=blob;f=Documentation/filesystems/proc.txt;h=fd8d0d594fc7c9fd6bd1a5baa107968a9c9fab01;hb=HEAD#l1197
-		# /proc/cpuinfo
-		# Model, sockets, cores,
-	
+		# load
+
+
+
 	def Disk(self):
 		return
 		# Name of mountpoint - http://stackoverflow.com/questions/4453602/how-to-find-the-mountpoint-a-file-resides-on
@@ -419,17 +473,16 @@ def fetch_system_information():
 
 	# CPU
 	info['cpu'] = SI.CPU()
+
+	# Scheduler
+	info['scheduler'] = SI.Scheduler()
+
 	pprint(info)
 	sys.exit(1)
 	
 	# Memory
 	
 	# IO
-
-	# Process scheduler
-
-	# Hardware
-
 
 
 def post_data_to_web(data):
