@@ -78,7 +78,7 @@ class SystemInformation():
 
 
 			except Exception as e:
-				logger.error("Error while collecting system manufacturer/model via dmidecode: %s" % e)
+				logger.debug("Error while collecting system manufacturer/model via dmidecode: %s" % e)
 
 		return os
 
