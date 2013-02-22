@@ -144,7 +144,6 @@ class SystemInformation():
 			loadavg = f.readlines()
 
 		loadavg = map(lambda x: float(x), loadavg[0].split()[:3])
-		pprint(loadavg)
 
 		result['loadavg_1min'] = loadavg[0]
 		result['loadavg_5min'] = loadavg[1]
@@ -624,7 +623,15 @@ def main():
 	if option['systeminformation']:
 		data['system'] = fetch_system_information()
 
-	(output, code) = post_data_to_web(data)
+	num_tries = 0
+	while True:
+		(output, code) = post_data_to_web(data)
+		num_tries = num_tries + 1
+		if code == 200 or num_tries >= 3:
+			break
+		logger.debug("Got code %s while posting data, sleeping 60 seconds then trying again" % code)
+		time.sleep(60)
+
 	if code == 200:
 		if not option['quiet']:
 			logger.info("Submitted successfully")
