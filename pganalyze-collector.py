@@ -503,6 +503,8 @@ def fetch_queries():
 		query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
 		normalized_query = query['normalized_query']
 
+		logger.debug("Processing query: %s" % normalized_query)
+
 		# if we haven't seen the query yet - add it
 		if 'normalized_query' not in queries:
 			queries[normalized_query] = query
