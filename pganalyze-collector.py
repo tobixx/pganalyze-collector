@@ -447,11 +447,13 @@ def read_config():
 
 	# FIXME: Could do with a dict
 	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
-	# Set db_host to localhost if not specified to force IP connection - most people don't use socket ident auth 
-	db_host = configdump.get('db_host') or 'localhost'
-	db_port = configdump.get('db_port')
 	db_username = configdump.get('db_username')
 	db_password = configdump.get('db_password')
+	db_host = configdump.get('db_host')
+	# Set db_host to localhost if not specified and db_password present to force IP connection
+	if not db_host and db_password:
+		db_host = 'localhost'
+	db_port = configdump.get('db_port')
 	db_name = configdump.get('db_name')
 	api_key = configdump.get('api_key')
 	psql_binary = configdump.get('psql_binary')
