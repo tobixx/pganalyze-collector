@@ -200,10 +200,26 @@ class SystemInformation():
 		return([result])
 	
 	def Memory(self):
-		return
-		# /proc/meminfo
-		# Memory Utilization
-		# Swapping
+		result = {}
+		with open('/proc/meminfo') as f:
+			meminfo = f.readlines()
+
+		meminfo = dict(map(lambda x: " ".join(x.split()[:2]).split(': '), meminfo))
+		
+		for k in ['MemTotal', 'MemFree', 'Buffers', 'Cached', 'SwapTotal', 'SwapFree', 'Dirty', 'Writeback']:
+			if not meminfo.get(k): meminfo[k] = 0
+
+		result['total_KiB'] = meminfo['MemTotal']
+		result['buffers_KiB'] = meminfo['Buffers']
+		result['pagecache_KiB'] = meminfo['Cached']
+		result['free_KiB'] = meminfo['MemFree'] 
+		result['applications_KiB'] = int(meminfo['MemTotal']) - int(meminfo['MemFree']) - int(meminfo['Buffers']) - int(meminfo['Cached'])
+		result['dirty_KiB'] = meminfo['Dirty']
+		result['writeback_KiB'] = meminfo['Writeback']
+		result['swap_total_KiB'] = meminfo['SwapTotal']
+		result['swap_free_KiB'] = meminfo['SwapFree']
+
+		return(result)
 
 	def _find_mount_point(self, path):
 		path = os.path.abspath(path)
@@ -526,12 +542,12 @@ def fetch_system_information():
 	# Storage
 	info['storage'] = SI.Storage()
 
+	# Memory
+	info['memory'] = SI.Memory()
+
 	pprint(info)
 	sys.exit(1)
 	
-	# Memory
-	
-	# IO
 
 
 def post_data_to_web(data):
