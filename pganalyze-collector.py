@@ -462,7 +462,7 @@ def read_config():
 
 
 	if not db_name and api_key:
-		logger.error("Missing database name and/or api key in configfile #{configfile}, perhaps create one with --generate-config?")
+		logger.error("Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
 		sys.exit(1)
 
 
