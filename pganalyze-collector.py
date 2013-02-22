@@ -178,7 +178,7 @@ class SystemInformation():
 		# not all devices have stats
 		if os.path.exists(sysfs_device_path + 'stat'):
 			with open(sysfs_device_path + 'stat', 'r') as f:
-				device_stats = f.readline().split()
+				device_stats = map(int, f.readline().split())
 
 
 			stat_fields = [ 'rd_ios', 'rd_merges', 'rd_sectors', 'rd_ticks',
@@ -204,23 +204,25 @@ class SystemInformation():
 		with open('/proc/meminfo') as f:
 			meminfo = f.readlines()
 
+		# Strip whitespace, drop kb suffix, split into two elements
 		meminfo = dict(map(lambda x: " ".join(x.split()[:2]).split(': '), meminfo))
 		
+		# Initialize missing fields (openvz et al), convert to bytes
 		for k in ['MemTotal', 'MemFree', 'Buffers', 'Cached', 'SwapTotal', 'SwapFree', 'Dirty', 'Writeback']:
 			if not meminfo.get(k):
 				meminfo[k] = 0
 			else:
-				meminfo[k] = int(meminfo[k])
+				meminfo[k] = int(meminfo[k]) * 1024
 
-		result['total_KiB'] = meminfo['MemTotal']
-		result['buffers_KiB'] = meminfo['Buffers']
-		result['pagecache_KiB'] = meminfo['Cached']
-		result['free_KiB'] = meminfo['MemFree'] 
-		result['applications_KiB'] = meminfo['MemTotal'] - meminfo['MemFree'] - meminfo['Buffers'] - meminfo['Cached']
-		result['dirty_KiB'] = meminfo['Dirty']
-		result['writeback_KiB'] = meminfo['Writeback']
-		result['swap_total_KiB'] = meminfo['SwapTotal']
-		result['swap_free_KiB'] = meminfo['SwapFree']
+		result['total_bytes'] = meminfo['MemTotal']
+		result['buffers_bytes'] = meminfo['Buffers']
+		result['pagecache_bytes'] = meminfo['Cached']
+		result['free_bytes'] = meminfo['MemFree'] 
+		result['applications_bytes'] = meminfo['MemTotal'] - meminfo['MemFree'] - meminfo['Buffers'] - meminfo['Cached']
+		result['dirty_bytes'] = meminfo['Dirty']
+		result['writeback_bytes'] = meminfo['Writeback']
+		result['swap_total_bytes'] = meminfo['SwapTotal']
+		result['swap_free_bytes'] = meminfo['SwapFree']
 
 		return(result)
 
