@@ -114,9 +114,9 @@ class SystemInformation():
 		hardware = {}
 		hardware['model'] = next(l[1] for l in cpuinfo if l[0] == 'model name')
 		hardware['cache_size'] = next(l[1] for l in cpuinfo if l[0] == 'cache size')
-		hardware['speed_MHz'] = next(l[1] for l in cpuinfo if l[0] == 'cpu MHz')
+		hardware['speed_MHz'] = next(round(float(l[1]),2) for l in cpuinfo if l[0] == 'cpu MHz')
 		hardware['sockets'] = int(max([l[1] for l in cpuinfo if l[0] == 'physical id'])) + 1
-		hardware['cores_per_socket'] = next(l[1] for l in cpuinfo if l[0] == 'cpu cores')
+		hardware['cores_per_socket'] = next(int(l[1]) for l in cpuinfo if l[0] == 'cpu cores')
 
 		result['hardware'] = hardware
 
@@ -133,21 +133,22 @@ class SystemInformation():
 		os_counters = [l.split() for l in os_counters if len(l) > 1]
 
 
-		result['interrupts'] = next(l[1] for l in os_counters if l[0] == 'intr')
-		result['context_switches'] = next(l[1] for l in os_counters if l[0] == 'ctxt')
-		result['procs_running'] = next(l[1] for l in os_counters if l[0] == 'procs_running')
-		result['procs_blocked'] = next(l[1] for l in os_counters if l[0] == 'procs_blocked')
-		result['procs_created'] = next(l[1] for l in os_counters if l[0] == 'processes')
+		result['interrupts'] = next(int(l[1]) for l in os_counters if l[0] == 'intr')
+		result['context_switches'] = next(int(l[1]) for l in os_counters if l[0] == 'ctxt')
+		result['procs_running'] = next(int(l[1]) for l in os_counters if l[0] == 'procs_running')
+		result['procs_blocked'] = next(int(l[1]) for l in os_counters if l[0] == 'procs_blocked')
+		result['procs_created'] = next(int(l[1]) for l in os_counters if l[0] == 'processes')
 
 
 		with open('/proc/loadavg', 'r') as f:
 			loadavg = f.readlines()
 
-		loadavg = loadavg[0].split()
+		loadavg = map(lambda x: float(x), loadavg[0].split()[:3])
+		pprint(loadavg)
 
-		result['loadavg_1min'] = loadavg[0] 
-		result['loadavg_5min'] = loadavg[1] 
-		result['loadavg_15min'] = loadavg[2] 
+		result['loadavg_1min'] = loadavg[0]
+		result['loadavg_5min'] = loadavg[1]
+		result['loadavg_15min'] = loadavg[2]
 
 		return(result)
 
@@ -207,13 +208,16 @@ class SystemInformation():
 		meminfo = dict(map(lambda x: " ".join(x.split()[:2]).split(': '), meminfo))
 		
 		for k in ['MemTotal', 'MemFree', 'Buffers', 'Cached', 'SwapTotal', 'SwapFree', 'Dirty', 'Writeback']:
-			if not meminfo.get(k): meminfo[k] = 0
+			if not meminfo.get(k):
+				meminfo[k] = 0
+			else:
+				meminfo[k] = int(meminfo[k])
 
 		result['total_KiB'] = meminfo['MemTotal']
 		result['buffers_KiB'] = meminfo['Buffers']
 		result['pagecache_KiB'] = meminfo['Cached']
 		result['free_KiB'] = meminfo['MemFree'] 
-		result['applications_KiB'] = int(meminfo['MemTotal']) - int(meminfo['MemFree']) - int(meminfo['Buffers']) - int(meminfo['Cached'])
+		result['applications_KiB'] = meminfo['MemTotal'] - meminfo['MemFree'] - meminfo['Buffers'] - meminfo['Cached']
 		result['dirty_KiB'] = meminfo['Dirty']
 		result['writeback_KiB'] = meminfo['Writeback']
 		result['swap_total_KiB'] = meminfo['SwapTotal']
@@ -368,8 +372,6 @@ def parse_options(print_help=False):
 	parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
 			default=True,
 			help='Don\'t collect OS level performance data'),
-	#	parser.add_option('--scrub-query-paramters', action='store_true", dest='scrubqueryparamters',
-	#		help='...')
 
 	if print_help:
 		parser.print_help()
