@@ -479,8 +479,8 @@ def fetch_queries():
 	plan_fields = ["planid", "had_our_search_path", "from_our_database",
 		"query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
-	query = "SELECT replace(pq.normalized_query, chr(10), ' ') AS pq_normalized_query"
-	query += ", replace(p.query, chr(10), ' ') AS p_query"
+	query = "SELECT replace(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
+	query += ", replace(p.query, chr(10) || chr(13), '  ') AS p_query"
 	query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
 	query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
 	query += " FROM pg_stat_plans p"
