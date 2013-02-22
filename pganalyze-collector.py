@@ -362,8 +362,12 @@ def parse_options(print_help=False):
 			help='Print data that would get sent to web service and exit afterwards.')
 	parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
 			help='Don\'t reset statistics after posting to web. Only use for testing purposes.') 
-	parser.add_option('--no-query-parameters', action='store_true', dest='noqueryparameters',
+	parser.add_option('--no-query-parameters', action='store_false', dest='queryparameters',
+			default=True,
 			help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
+	parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
+			default=True,
+			help='Don\'t collect OS level performance data'),
 	#	parser.add_option('--scrub-query-paramters', action='store_true", dest='scrubqueryparamters',
 	#		help='...')
 
@@ -506,7 +510,7 @@ def fetch_queries():
 		plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
 
 		# Delete parmaterized example queries if wanted
-		if option['noqueryparameters']:
+		if not option['queryparameters']:
 			del(plan['query'])
 
 		# initialize plans array
@@ -525,29 +529,19 @@ def fetch_queries():
 
 	return queries.values()
 
+
 def fetch_system_information():
 
 	SI = SystemInformation()
 	info = {}
 
-	# OS
 	info['os'] = SI.OS()
-
-	# CPU
 	info['cpu'] = SI.CPU()
-
-	# Scheduler
 	info['scheduler'] = SI.Scheduler()
-
-	# Storage
 	info['storage'] = SI.Storage()
-
-	# Memory
 	info['memory'] = SI.Memory()
 
-	pprint(info)
-	sys.exit(1)
-	
+	return(info)
 
 
 def post_data_to_web(data):
@@ -557,7 +551,8 @@ def post_data_to_web(data):
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
 	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
 	to_post['options'] = {}
-	to_post['options']['no_query_parameters'] = option['noqueryparameters']
+	to_post['options']['query_parameters'] = option['queryparameters']
+	to_post['options']['system_information'] = option['systeminformation']
 
 	# These will dump the Python dict with Python bools. The posted values will have json semantics (e.g. true/false/null for bools)
 	if option['dryrun']:
@@ -623,7 +618,9 @@ def main():
 
 	data = {}
 	data['queries'] = fetch_queries()
-	data['system'] = fetch_system_information()
+
+	if option['systeminformation']:
+		data['system'] = fetch_system_information()
 
 	(output, code) = post_data_to_web(data)
 	if code == 200:
