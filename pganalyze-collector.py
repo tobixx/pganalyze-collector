@@ -38,13 +38,200 @@ import logging
 import ConfigParser
 from optparse import OptionParser
 from stat import *
+import platform
 from pprint import pprint
 
 
 API_URL = 'https://pganalyze.com/queries'
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.1.5'
+VERSION = '0.2.0'
+
+
+class SystemInformation():
+
+	def __init__(self):
+		self.system = platform.system()
+		if self.system != 'Linux':
+			raise Exception("Unsupported system: %s" % self.system)
+
+	def OS(self):
+		os = {}
+		os['system'] = platform.system()
+		if self.system == 'Linux':
+			(os['distribution'], os['distribution_version']) = platform.linux_distribution()[0:2]
+		elif self.system == 'Darwin':
+			os['distribution'] = 'OS X'
+			os['distribution_version'] = platform.mac_ver()[0]
+
+		os['architecture'] = platform.machine()
+		os['kernel_version'] = platform.release()
+
+		# This only works when run as root - maybe drop again?
+		dmidecode = find_executable_in_path('dmidecode')
+		if dmidecode:
+			try:
+				vendor = subprocess.check_output([dmidecode, '-s', 'system-manufacturer']).strip()
+				model = subprocess.check_output([dmidecode, '-s', 'system-product-name']).strip()
+				if vendor and model:
+					os['server_model'] = "%s %s" % (vendor, model)
+
+
+			except Exception as e:
+				logger.debug("Error while collecting system manufacturer/model via dmidecode: %s" % e)
+
+		return os
+
+
+	def CPU(self):
+		result = {}
+		if self.system != 'Linux': return None
+
+		with open('/proc/stat', 'r') as f:
+			procstat = f.readlines()
+
+		# Fetch combined CPU counter from lines
+		os_counters = filter(lambda x: x.find('cpu ') == 0, procstat)[0]
+
+		# tokenize, strip row heading
+		os_counters = os_counters.split()[1:]
+
+		# Correct all values to msec
+		kernel_hz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
+		os_counters = map(lambda x: int(x) * (1000 / kernel_hz), os_counters)
+
+		os_counter_names = [ 'user_msec', 'nice_msec', 'system_msec', 'idle_msec', 'iowait_msec',
+				     'irq_msec', 'softirq_msec', 'steal_msec', 'guest_msec', 'guest_nice_msec']
+
+		result['busy_times'] = dict(zip(os_counter_names, os_counters))
+
+
+		with open('/proc/cpuinfo', 'r') as f:
+			cpuinfo = f.readlines()
+
+		# Trim excessive whitespace in strings, return two elements per line
+		cpuinfo = map(lambda x: " ".join(x.split()).split(' : '), cpuinfo)
+
+		hardware = {}
+		hardware['model'] = next(l[1] for l in cpuinfo if l[0] == 'model name')
+		hardware['cache_size'] = next(l[1] for l in cpuinfo if l[0] == 'cache size')
+		hardware['speed_MHz'] = next(round(float(l[1]),2) for l in cpuinfo if l[0] == 'cpu MHz')
+		hardware['sockets'] = int(max([l[1] for l in cpuinfo if l[0] == 'physical id'])) + 1
+		hardware['cores_per_socket'] = next(int(l[1]) for l in cpuinfo if l[0] == 'cpu cores')
+
+		result['hardware'] = hardware
+
+
+		return(result)
+
+
+	def Scheduler(self):
+		result = {}
+
+		with open('/proc/stat', 'r') as f:
+			os_counters = f.readlines()
+
+		os_counters = [l.split() for l in os_counters if len(l) > 1]
+
+
+		result['interrupts'] = next(int(l[1]) for l in os_counters if l[0] == 'intr')
+		result['context_switches'] = next(int(l[1]) for l in os_counters if l[0] == 'ctxt')
+		result['procs_running'] = next(int(l[1]) for l in os_counters if l[0] == 'procs_running')
+		result['procs_blocked'] = next(int(l[1]) for l in os_counters if l[0] == 'procs_blocked')
+		result['procs_created'] = next(int(l[1]) for l in os_counters if l[0] == 'processes')
+
+
+		with open('/proc/loadavg', 'r') as f:
+			loadavg = f.readlines()
+
+		loadavg = map(lambda x: float(x), loadavg[0].split()[:3])
+
+		result['loadavg_1min'] = loadavg[0]
+		result['loadavg_5min'] = loadavg[1]
+		result['loadavg_15min'] = loadavg[2]
+
+		return(result)
+
+
+
+	def Storage(self):
+		result = {}
+
+		# FIXME: Collect information for all tablespaces and pg_xlog
+
+		data_directory = db.run_query('SHOW data_directory')[0]['data_directory']
+
+		result['name'] = 'PGDATA directory'
+		result['path'] = data_directory
+		result['mountpoint'] = self._find_mount_point(data_directory)
+
+		vfs_stats = os.statvfs(data_directory)
+
+		result['bytes_total'] = vfs_stats.f_bsize * vfs_stats.f_blocks
+		result['bytes_available'] = vfs_stats.f_bsize * vfs_stats.f_bavail
+
+		devicenode = os.stat(data_directory).st_dev
+		major = os.major(devicenode)
+		minor = os.minor(devicenode)
+
+		sysfs_device_path = "/sys/dev/block/%d:%d/" % (major, minor)
+
+		# not all devices have stats
+		if os.path.exists(sysfs_device_path + 'stat'):
+			with open(sysfs_device_path + 'stat', 'r') as f:
+				device_stats = map(int, f.readline().split())
+
+
+			stat_fields = [ 'rd_ios', 'rd_merges', 'rd_sectors', 'rd_ticks',
+					'wr_ios', 'wr_merges', 'wr_sectors', 'wr_ticks',
+					'ios_in_prog', 'tot_ticks', 'rq_ticks' ]
+
+			result['perfdata'] = dict(zip(stat_fields, device_stats))
+
+		# Vendor/Model doesn't exist for metadevices
+		if os.path.exists(sysfs_device_path + 'device/vendor'):
+			with open(sysfs_device_path + 'device/vendor', 'r') as f:
+				vendor = f.readline().trim()
+
+			with open(sysfs_device_path + 'device/model', 'r') as f:
+				model = f.readline().trim()
+
+			result['hardware'] = " ".join(vendor, model)
+
+		return([result])
+	
+	def Memory(self):
+		result = {}
+		with open('/proc/meminfo') as f:
+			meminfo = f.readlines()
+
+		# Strip whitespace, drop kb suffix, split into two elements
+		meminfo = dict(map(lambda x: " ".join(x.split()[:2]).split(': '), meminfo))
+		
+		# Initialize missing fields (openvz et al), convert to bytes
+		for k in ['MemTotal', 'MemFree', 'Buffers', 'Cached', 'SwapTotal', 'SwapFree', 'Dirty', 'Writeback']:
+			if not meminfo.get(k):
+				meminfo[k] = 0
+			else:
+				meminfo[k] = int(meminfo[k]) * 1024
+
+		result['total_bytes'] = meminfo['MemTotal']
+		result['buffers_bytes'] = meminfo['Buffers']
+		result['pagecache_bytes'] = meminfo['Cached']
+		result['free_bytes'] = meminfo['MemFree'] 
+		result['applications_bytes'] = meminfo['MemTotal'] - meminfo['MemFree'] - meminfo['Buffers'] - meminfo['Cached']
+		result['dirty_bytes'] = meminfo['Dirty']
+		result['writeback_bytes'] = meminfo['Writeback']
+		result['swap_total_bytes'] = meminfo['SwapTotal']
+		result['swap_free_bytes'] = meminfo['SwapFree']
+
+		return(result)
+
+	def _find_mount_point(self, path):
+		path = os.path.abspath(path)
+		while not os.path.ismount(path):
+			path = os.path.dirname(path)
+		return path
 
 
 class PSQL():
@@ -57,11 +244,20 @@ class PSQL():
 		logger.debug("Using %s as psql binary" % self.psql)
 		
 		# Setting up environment for psql
+		logger.debug("Setting PGDATABASE to %s" % dbname)
 		os.environ['PGDATABASE'] = dbname
-		if username: os.environ['PGUSER'] = username
-		if password: os.environ['PGPASSWORD'] = password
-		if host: os.environ['PGHOST'] = host
-		if port: os.environ['PGPORT'] = port
+		if username:
+			os.environ['PGUSER'] = username
+			logger.debug("Setting PGUSER to %s" % username)
+		if password:
+			os.environ['PGPASSWORD'] = password
+			logger.debug("Setting PGPASSWORD")
+		if host:
+			os.environ['PGHOST'] = host
+			logger.debug("Setting PGHOST to %s" % host)
+		if port:
+			os.environ['PGPORT'] = port
+			logger.debug("Setting PGPORT to %s" % port)
 
 	def run_query(self, query, should_raise=False, ignore_noncrit=False):
 
@@ -117,13 +313,17 @@ class PSQL():
 		return True
 
 	def _find_psql(self):
-		cmd = 'psql'
-		for path in os.environ['PATH'].split(os.pathsep):
-			test = "%s/%s" % (path, cmd)
-			logger.debug("Testing %s" % test)
-			if os.path.isfile(test) and os.access(test, os.X_OK):
-				return test
-		return None
+		logger.debug("Searching for PSQL binary")
+		return find_executable_in_path('psql')
+
+
+def find_executable_in_path(cmd):
+	for path in os.environ['PATH'].split(os.pathsep):
+		test = "%s/%s" % (path, cmd)
+		logger.debug("Testing %s" % test)
+		if os.path.isfile(test) and os.access(test, os.X_OK):
+			return test
+	return None
 
 
 
@@ -151,6 +351,7 @@ def check_database():
 		logger.error("Table pg_extension doesn't exist - this shouldn't happen")
 		sys.exit(1)
 
+
 def parse_options(print_help=False):
 	parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
 
@@ -167,10 +368,12 @@ def parse_options(print_help=False):
 			help='Print data that would get sent to web service and exit afterwards.')
 	parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
 			help='Don\'t reset statistics after posting to web. Only use for testing purposes.') 
-	parser.add_option('--no-query-parameters', action='store_true', dest='noqueryparameters',
+	parser.add_option('--no-query-parameters', action='store_false', dest='queryparameters',
+			default=True,
 			help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
-	#	parser.add_option('--scrub-query-paramters', action='store_true", dest='scrubqueryparamters',
-	#		help='...')
+	parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
+			default=True,
+			help='Don\'t collect OS level performance data'),
 
 	if print_help:
 		parser.print_help()
@@ -241,22 +444,26 @@ def read_config():
 	logger.debug("read config from %s" % configfile)
 	for k, v in configparser.items('pganalyze'):
 		configdump[k] = v
+		# Don't print the password to debug output
+		if k == 'db_password': v = '***removed***'
 		logger.debug("%s => %s" % (k, v))
 
 	# FIXME: Could do with a dict
 	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
-	# Set db_host to localhost if not specified to force IP connection - most people don't use socket ident auth 
-	db_host = configdump.get('db_host') or 'localhost'
-	db_port = configdump.get('db_port')
 	db_username = configdump.get('db_username')
 	db_password = configdump.get('db_password')
+	db_host = configdump.get('db_host')
+	# Set db_host to localhost if not specified and db_password present to force IP connection
+	if not db_host and db_password:
+		db_host = 'localhost'
+	db_port = configdump.get('db_port')
 	db_name = configdump.get('db_name')
 	api_key = configdump.get('api_key')
 	psql_binary = configdump.get('psql_binary')
 
 
 	if not db_name and api_key:
-		logger.error("Missing database name and/or api key in configfile #{configfile}, perhaps create one with --generate-config?")
+		logger.error("Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
 		sys.exit(1)
 
 
@@ -273,8 +480,8 @@ def fetch_queries():
 	plan_fields = ["planid", "had_our_search_path", "from_our_database",
 		"query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
-	query = "SELECT replace(pq.normalized_query, chr(10), ' ') AS pq_normalized_query"
-	query += ", replace(p.query, chr(10), ' ') AS p_query"
+	query = "SELECT translate(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
+	query += ", translate(p.query, chr(10) || chr(13), '  ') AS p_query"
 	query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
 	query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
 	query += " FROM pg_stat_plans p"
@@ -290,7 +497,7 @@ def fetch_queries():
 	query += " AND p.planid = ANY (pq.planids);"
 
 	fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
-	fetch_plan += "SELECT replace(pg_stat_plans_explain(%s, %s, %s), chr(10), ' ') AS explain"
+	fetch_plan += "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
 
 	queries = {}
 
@@ -301,6 +508,8 @@ def fetch_queries():
 		query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
 		normalized_query = query['normalized_query']
 
+		logger.debug("Processing query: %s" % normalized_query)
+
 		# if we haven't seen the query yet - add it
 		if 'normalized_query' not in queries:
 			queries[normalized_query] = query
@@ -309,7 +518,7 @@ def fetch_queries():
 		plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
 
 		# Delete parmaterized example queries if wanted
-		if option['noqueryparameters']:
+		if not option['queryparameters']:
 			del(plan['query'])
 
 		# initialize plans array
@@ -328,14 +537,30 @@ def fetch_queries():
 
 	return queries.values()
 
-def post_data_to_web(queries):
+
+def fetch_system_information():
+
+	SI = SystemInformation()
+	info = {}
+
+	info['os'] = SI.OS()
+	info['cpu'] = SI.CPU()
+	info['scheduler'] = SI.Scheduler()
+	info['storage'] = SI.Storage()
+	info['memory'] = SI.Memory()
+
+	return(info)
+
+
+def post_data_to_web(data):
 	to_post = {}
-	to_post['data'] = json.dumps(dict({'queries': queries}))
+	to_post['data'] = json.dumps(data)
 	to_post['api_key'] = api_key
 	to_post['collected_at'] = calendar.timegm(time.gmtime())
 	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
 	to_post['options'] = {}
-	to_post['options']['no_query_parameters'] = option['noqueryparameters']
+	to_post['options']['query_parameters'] = option['queryparameters']
+	to_post['options']['system_information'] = option['systeminformation']
 
 	# These will dump the Python dict with Python bools. The posted values will have json semantics (e.g. true/false/null for bools)
 	if option['dryrun']:
@@ -357,6 +582,7 @@ def post_data_to_web(queries):
 		return res.read(), res.getcode()
 	except Exception as e:
 		logger.error("Failed to post data to service: %s" % e)
+		sys.exit(1)
 
 
 
@@ -398,9 +624,21 @@ def main():
 
 	check_database()
 
-	queries = fetch_queries()
+	data = {}
+	data['queries'] = fetch_queries()
 
-	(output, code) = post_data_to_web(queries)
+	if option['systeminformation']:
+		data['system'] = fetch_system_information()
+
+	num_tries = 0
+	while True:
+		(output, code) = post_data_to_web(data)
+		num_tries = num_tries + 1
+		if code == 200 or num_tries >= 3:
+			break
+		logger.debug("Got code %s while posting data, sleeping 60 seconds then trying again" % code)
+		time.sleep(60)
+
 	if code == 200:
 		if not option['quiet']:
 			logger.info("Submitted successfully")
