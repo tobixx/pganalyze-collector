@@ -222,11 +222,20 @@ class PSQL():
 		logger.debug("Using %s as psql binary" % self.psql)
 		
 		# Setting up environment for psql
+		logger.debug("Setting PGDATABASE to %s" % dbname)
 		os.environ['PGDATABASE'] = dbname
-		if username: os.environ['PGUSER'] = username
-		if password: os.environ['PGPASSWORD'] = password
-		if host: os.environ['PGHOST'] = host
-		if port: os.environ['PGPORT'] = port
+		if username:
+			os.environ['PGUSER'] = username
+			logger.debug("Setting PGUSER to %s" % username)
+		if password:
+			os.environ['PGPASSWORD'] = password
+			logger.debug("Setting PGPASSWORD")
+		if host:
+			os.environ['PGHOST'] = host
+			logger.debug("Setting PGHOST to %s" % host)
+		if port:
+			os.environ['PGPORT'] = port
+			logger.debug("Setting PGPORT to %s" % port)
 
 	def run_query(self, query, should_raise=False, ignore_noncrit=False):
 
@@ -411,6 +420,8 @@ def read_config():
 	logger.debug("read config from %s" % configfile)
 	for k, v in configparser.items('pganalyze'):
 		configdump[k] = v
+		# Don't print the password to debug output
+		if k == 'db_password': v = '***removed***'
 		logger.debug("%s => %s" % (k, v))
 
 	# FIXME: Could do with a dict
