@@ -150,32 +150,67 @@ class SystemInformation():
 		result['loadavg_15min'] = loadavg[2] 
 
 		return(result)
-		# /proc/stat
-		# load
 
 
 
-	def Disk(self):
-		return
-		# Name of mountpoint - http://stackoverflow.com/questions/4453602/how-to-find-the-mountpoint-a-file-resides-on
-		# Data directory - SHOW data_directory
-		# pg_xlog - verify it's on the same device
-		# device vendor & model - /sys/dev/block/../device/vendor & model
-		#
-		# sysfs:
-		# https://github.com/terrorobe/munin-plugins/blob/master/alumni/linux_diskstat_#L501
-		# Latency
-		# IOPS
-		# Utilization
-		# Usage
-		#
-		# Mapping mountpoint -> device: stat data directory, extract major/minor from dev, use /sys/dev/block/<major:minor>
+	def Storage(self):
+		result = {}
+
+		# FIXME: Collect information for all tablespaces and pg_xlog
+
+		data_directory = db.run_query('SHOW data_directory')[0]['data_directory']
+
+		result['name'] = 'PGDATA directory'
+		result['path'] = data_directory
+		result['mountpoint'] = self._find_mount_point(data_directory)
+
+		vfs_stats = os.statvfs(data_directory)
+
+		result['bytes_total'] = vfs_stats.f_bsize * vfs_stats.f_blocks
+		result['bytes_available'] = vfs_stats.f_bsize * vfs_stats.f_bavail
+
+		devicenode = os.stat(data_directory).st_dev
+		major = os.major(devicenode)
+		minor = os.minor(devicenode)
+
+		sysfs_device_path = "/sys/dev/block/%d:%d/" % (major, minor)
+
+		# not all devices have stats
+		if os.path.exists(sysfs_device_path + 'stat'):
+			with open(sysfs_device_path + 'stat', 'r') as f:
+				device_stats = f.readline().split()
+
+
+			stat_fields = [ 'rd_ios', 'rd_merges', 'rd_sectors', 'rd_ticks',
+					'wr_ios', 'wr_merges', 'wr_sectors', 'wr_ticks',
+					'ios_in_prog', 'tot_ticks', 'rq_ticks' ]
+
+			result['perfdata'] = dict(zip(stat_fields, device_stats))
+
+		# Vendor/Model doesn't exist for metadevices
+		if os.path.exists(sysfs_device_path + 'device/vendor'):
+			with open(sysfs_device_path + 'device/vendor', 'r') as f:
+				vendor = f.readline().trim()
+
+			with open(sysfs_device_path + 'device/model', 'r') as f:
+				model = f.readline().trim()
+
+			result['hardware'] = " ".join(vendor, model)
+
+		return([result])
 	
 	def Memory(self):
 		return
 		# /proc/meminfo
 		# Memory Utilization
 		# Swapping
+
+	def _find_mount_point(self, path):
+		path = os.path.abspath(path)
+		while not os.path.ismount(path):
+			path = os.path.dirname(path)
+		return path
+
 
 class PSQL():
 	def __init__(self, dbname, username=None, password=None, psql=None, host=None, port=None):
@@ -476,6 +511,9 @@ def fetch_system_information():
 
 	# Scheduler
 	info['scheduler'] = SI.Scheduler()
+
+	# Storage
+	info['storage'] = SI.Storage()
 
 	pprint(info)
 	sys.exit(1)
