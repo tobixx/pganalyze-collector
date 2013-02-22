@@ -115,7 +115,7 @@ class SystemInformation():
 		hardware = {}
 		hardware['model'] = next(l[1] for l in cpuinfo if l[0] == 'model name')
 		hardware['cache_size'] = next(l[1] for l in cpuinfo if l[0] == 'cache size')
-		hardware['speed_MHz'] = next(round(float(l[1]),2) for l in cpuinfo if l[0] == 'cpu MHz')
+		hardware['speed_mhz'] = next(round(float(l[1]),2) for l in cpuinfo if l[0] == 'cpu MHz')
 		hardware['sockets'] = int(max([l[1] for l in cpuinfo if l[0] == 'physical id'])) + 1
 		hardware['cores_per_socket'] = next(int(l[1]) for l in cpuinfo if l[0] == 'cpu cores')
 
