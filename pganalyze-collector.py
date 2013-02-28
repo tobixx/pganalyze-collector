@@ -48,6 +48,115 @@ MYNAME = 'pganalyze-collector'
 VERSION = '0.2.1-dev'
 
 
+class PostgresInformation():
+
+	def __init__(self):
+		return
+
+
+	def Tables(self):
+
+		query = """
+SELECT n.nspname AS schema,
+       c.relname AS table,
+       pg_catalog.pg_table_size(c.oid) AS tablesize,
+       pg_catalog.format_type(a.atttypid, a.atttypmod) AS columntype,
+  (SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+   FROM pg_catalog.pg_attrdef d
+   WHERE d.adrelid = a.attrelid
+     AND d.adnum = a.attnum
+     AND a.atthasdef) AS defaultvalue,
+       a.attnotnull AS NOTNULL,
+       a.attnum AS columnposition
+FROM pg_catalog.pg_class c
+LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+WHERE c.relkind = 'r'
+  AND n.nspname <> 'pg_catalog'
+  AND n.nspname <> 'information_schema'
+  AND n.nspname !~ '^pg_toast'
+  AND pg_catalog.pg_table_is_visible(c.oid)
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+ORDER BY n.nspname,
+         c.relname,
+         a.attnum;
+"""
+		#FIXME: toast handling, table inheritance
+
+	def Indexes(self):
+
+		query = """
+SELECT n.nspname AS schema,
+       c.relname AS table,
+       i.indkey AS indexedcolumns,
+       c2.relname AS indexname,
+       pg_relation_size(c2.oid) AS indexsize,
+       i.indisprimary,
+       i.indisunique,
+       i.indisvalid,
+       pg_catalog.pg_get_indexdef(i.indexrelid, 0, TRUE),
+       pg_catalog.pg_get_constraintdef(con.oid, TRUE)
+FROM pg_catalog.pg_class c,
+     pg_catalog.pg_class c2,
+     pg_catalog.pg_namespace n,
+     pg_catalog.pg_index i
+LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid
+                                           AND conindid = i.indexrelid
+                                           AND contype IN ('p', 'u', 'x'))
+WHERE c.relkind = 'r'
+  AND n.nspname <> 'pg_catalog'
+  AND n.nspname <> 'information_schema'
+  AND n.nspname !~ '^pg_toast'
+  AND pg_catalog.pg_table_is_visible(c.oid)
+  AND c.oid = i.indrelid
+  AND i.indexrelid = c2.oid
+  AND n.oid = c.relnamespace
+ORDER BY n.nspname,
+         c.relname,
+         i.indisprimary DESC,
+         i.indisunique DESC;
+         c2.relname;
+"""
+
+		#FIXME: column references for index expressions
+
+	def Constraints(self):
+		query = """
+SELECT n.nspname AS SCHEMA,
+       c.relname AS TABLE,
+       conname AS constraintname,
+       pg_catalog.pg_get_constraintdef(r.oid, TRUE) AS constraintdef,
+       r.conkey AS localcolumns,
+       n2.nspname AS foreignschema,
+       c2.relname AS foreigntable,
+       r.confkey AS foreigncolumns
+FROM pg_catalog.pg_class c
+LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_catalog.pg_constraint r ON r.conrelid = c.oid
+LEFT JOIN pg_catalog.pg_class c2 ON r.confrelid = c2.oid
+LEFT JOIN pg_catalog.pg_namespace n2 ON n2.oid = c2.relnamespace
+WHERE r.contype = 'f'
+  AND n.nspname <> 'pg_catalog'
+  AND n.nspname <> 'information_schema'
+  AND n.nspname !~ '^pg_toast'
+  AND pg_catalog.pg_table_is_visible(c.oid)
+ORDER BY n.nspname,
+         c.relname,
+         constraintname;
+"""
+
+	def Triggers(self):
+
+		#FIXME: Fix query
+		query = """
+SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
+        FROM pg_catalog.pg_trigger t
+        WHERE t.tgrelid = '16795' AND NOT t.tgisinternal
+        ORDER BY 1
+"""
+
+
 class SystemInformation():
 
 	def __init__(self):
