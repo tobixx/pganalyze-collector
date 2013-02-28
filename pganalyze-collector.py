@@ -273,8 +273,8 @@ class PSQL():
 		(stdout, stderr) = p.communicate(query)
 
 
-		# Fail on all invocations where exitstatus is non-null
-		# When exitstatus is null, we might have only encountered notices or warnings which might be expected.
+		# Fail on all invocations where exitstatus is non-zero
+		# When exitstatus is zero, we might have only encountered notices or warnings which might be expected.
 		if p.returncode != 0 or (stderr and ignore_noncrit == False):
 			if should_raise:
 				raise Exception(stderr)
