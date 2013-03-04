@@ -54,12 +54,12 @@ class PostgresInformation():
 		return
 
 
-	def Tables(self):
-
+	def Columns(self):
 		query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
        pg_catalog.pg_table_size(c.oid) AS tablesize,
+       a.attname AS columname,
        pg_catalog.format_type(a.atttypid, a.atttypmod) AS columntype,
   (SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
    FROM pg_catalog.pg_attrdef d
@@ -84,14 +84,18 @@ ORDER BY n.nspname,
 """
 		#FIXME: toast handling, table inheritance
 
-	def Indexes(self):
+		result = db.run_query(query)
+		return(result)
 
+
+
+	def Indexes(self):
 		query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
        i.indkey AS indexedcolumns,
        c2.relname AS indexname,
-       pg_relation_size(c2.oid) AS indexsize,
+       pg_relation_size(c2.oid) AS size_bytes,
        i.indisprimary,
        i.indisunique,
        i.indisvalid,
@@ -115,11 +119,16 @@ WHERE c.relkind = 'r'
 ORDER BY n.nspname,
          c.relname,
          i.indisprimary DESC,
-         i.indisunique DESC;
+         i.indisunique DESC,
          c2.relname;
 """
-
 		#FIXME: column references for index expressions
+
+		result = db.run_query(query)
+		for row in result:
+			row['indexedcolumns'] = map(int, str(row['indexedcolumns']).split())
+		return(result)
+
 
 	def Constraints(self):
 		query = """
@@ -412,6 +421,7 @@ class PSQL():
 		resultset = []
 		for line in lines:
 			values = line.strip().split(colsep)
+			values = self._magic_cast(values)
 			resultset.append(dict(zip(columns, values)))
 
 		return resultset
@@ -424,6 +434,15 @@ class PSQL():
 	def _find_psql(self):
 		logger.debug("Searching for PSQL binary")
 		return find_executable_in_path('psql')
+
+	def _magic_cast(self, values):
+		nicevalues = []
+		for value in values:
+			try:
+				nicevalues.append(int(value))
+			except Exception as e:
+				nicevalues.append(value)
+		return(nicevalues)
 
 
 def find_executable_in_path(cmd):
@@ -453,7 +472,7 @@ def check_database():
 		sys.exit(1)
 
 	try:
-		if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", True)[0]['foo'] == '1':
+		if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", True)[0]['foo'] == 1:
 			logger.error("Extension pg_stat_plans isn't installed")
 			sys.exit(1)
 	except Exception as e:
@@ -660,6 +679,31 @@ def fetch_system_information():
 
 	return(info)
 
+def fetch_postgres_information():
+
+	PI = PostgresInformation()
+
+	info = {}
+
+	for row in PI.Columns():
+		tablekey = '.'.join([row['schema'], row['table']])
+		if not tablekey in info:
+			info[tablekey] = {}
+		info[tablekey]['schema'] = row.pop('schema')
+		info[tablekey]['table'] = row.pop('table')
+		info[tablekey]['size_bytes'] = row.pop('tablesize')
+		if not 'columns' in info[tablekey]:
+			info[tablekey]['columns'] = []
+		info[tablekey]['columns'].append(row)
+
+	for row in PI.Indexes():
+		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
+		if not 'indexes' in info[tablekey]:
+			info[tablekey]['indexes'] = []
+		info[tablekey]['indexes'].append(row)
+
+	return(info)
+
 
 def post_data_to_web(data):
 	to_post = {}
@@ -738,6 +782,8 @@ def main():
 
 	if option['systeminformation']:
 		data['system'] = fetch_system_information()
+
+	data['postgres'] = fetch_postgres_information()
 
 	num_tries = 0
 	while True:
