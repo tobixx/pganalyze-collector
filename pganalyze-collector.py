@@ -440,8 +440,19 @@ class PSQL():
 		for value in values:
 			try:
 				nicevalues.append(int(value))
+				continue
 			except Exception as e:
-				nicevalues.append(value)
+				pass
+
+			if value == 't':
+				nicevalues.append(True)
+				continue
+
+			if value == 'f':
+				nicevalues.append(False)
+				continue
+			
+			nicevalues.append(value)
 		return(nicevalues)
 
 
@@ -654,7 +665,7 @@ def fetch_queries():
 			queries[normalized_query]['plans'] = []
 
 		# try explaining the query if pg_stat_plans thinks it's possible
-		if plan['query_explainable'] == 't':
+		if plan['query_explainable']:
 			try:
 				result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True, False)
 				plan['explain'] = result[0]['explain'] 
@@ -684,23 +695,26 @@ def fetch_postgres_information():
 	PI = PostgresInformation()
 
 	info = {}
+	schema = {}
 
 	for row in PI.Columns():
 		tablekey = '.'.join([row['schema'], row['table']])
-		if not tablekey in info:
-			info[tablekey] = {}
-		info[tablekey]['schema'] = row.pop('schema')
-		info[tablekey]['table'] = row.pop('table')
-		info[tablekey]['size_bytes'] = row.pop('tablesize')
-		if not 'columns' in info[tablekey]:
-			info[tablekey]['columns'] = []
-		info[tablekey]['columns'].append(row)
+		if not tablekey in schema:
+			schema[tablekey] = {}
+		schema[tablekey]['schema'] = row.pop('schema')
+		schema[tablekey]['table'] = row.pop('table')
+		schema[tablekey]['size_bytes'] = row.pop('tablesize')
+		if not 'columns' in schema[tablekey]:
+			schema[tablekey]['columns'] = []
+		schema[tablekey]['columns'].append(row)
 
 	for row in PI.Indexes():
 		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
-		if not 'indexes' in info[tablekey]:
-			info[tablekey]['indexes'] = []
-		info[tablekey]['indexes'].append(row)
+		if not 'indexes' in schema[tablekey]:
+			schema[tablekey]['indexes'] = []
+		schema[tablekey]['indexes'].append(row)
+
+	info['schema'] = schema.values()
 
 	return(info)
 
