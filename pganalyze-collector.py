@@ -511,6 +511,8 @@ def parse_options(print_help=False):
 			help='Suppress all non-warning output during normal operation')
 	parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
 			help='Print data that would get sent to web service and exit afterwards.')
+	parser.add_option('--print-json', action='store_true', dest='printjson',
+			help='Print a json string instead of pretty-printed Python structures. Requires --dry-run.')
 	parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
 			help='Don\'t reset statistics after posting to web. Only use for testing purposes.') 
 	parser.add_option('--no-query-parameters', action='store_false', dest='queryparameters',
@@ -745,12 +747,15 @@ def post_data_to_web(data):
 	if option['dryrun']:
 		logger.info("Dumping data that would get posted")
 
-		to_post['data'] = json.loads(to_post['data'])
-		for query in to_post['data']['queries']:
-			for plan in query['plans']:
-				if 'explain' in plan:
-					plan['explain'] = json.loads(plan['explain'])
-		pprint(to_post)
+		if option['printjson']:
+			print(to_post)
+		else:
+			to_post['data'] = json.loads(to_post['data'])
+			for query in to_post['data']['queries']:
+				for plan in query['plans']:
+					if 'explain' in plan:
+						plan['explain'] = json.loads(plan['explain'])
+			pprint(to_post)
 
 		logger.info("Exiting.")
 		sys.exit(0)
