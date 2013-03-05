@@ -154,6 +154,12 @@ ORDER BY n.nspname,
          c.relname,
          constraintname;
 """
+		#FIXME: This probably misses check constraints and others?
+		result = db.run_query(query)
+		for row in result:
+			row['foreigncolumns'] = map(int, row['foreigncolumns'].strip('{}').split(','))
+			row['localcolumns'] = map(int, row['localcolumns'].strip('{}').split(','))
+		return(result)
 
 	def Triggers(self):
 
@@ -713,6 +719,12 @@ def fetch_postgres_information():
 		if not 'indexes' in schema[tablekey]:
 			schema[tablekey]['indexes'] = []
 		schema[tablekey]['indexes'].append(row)
+
+	for row in PI.Constraints():
+		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
+		if not 'constraints' in schema[tablekey]:
+			schema[tablekey]['constraints'] = []
+		schema[tablekey]['constraints'].append(row)
 
 	info['schema'] = schema.values()
 
