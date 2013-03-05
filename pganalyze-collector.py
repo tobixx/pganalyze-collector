@@ -59,15 +59,15 @@ class PostgresInformation():
 SELECT n.nspname AS schema,
        c.relname AS table,
        pg_catalog.pg_table_size(c.oid) AS tablesize,
-       a.attname AS columname,
-       pg_catalog.format_type(a.atttypid, a.atttypmod) AS columntype,
+       a.attname AS name,
+       pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
   (SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
    FROM pg_catalog.pg_attrdef d
    WHERE d.adrelid = a.attrelid
      AND d.adnum = a.attnum
-     AND a.atthasdef) AS defaultvalue,
-       a.attnotnull AS NOTNULL,
-       a.attnum AS columnposition
+     AND a.atthasdef) AS default_value,
+       a.attnotnull AS not_null,
+       a.attnum AS position
 FROM pg_catalog.pg_class c
 LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
@@ -93,14 +93,14 @@ ORDER BY n.nspname,
 		query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
-       i.indkey AS indexedcolumns,
+       i.indkey AS columns,
        c2.relname AS indexname,
        pg_relation_size(c2.oid) AS size_bytes,
-       i.indisprimary,
-       i.indisunique,
-       i.indisvalid,
-       pg_catalog.pg_get_indexdef(i.indexrelid, 0, TRUE),
-       pg_catalog.pg_get_constraintdef(con.oid, TRUE)
+       i.indisprimary AS is_primary,
+       i.indisunique AS is_unique,
+       i.indisvalid AS is_valid,
+       pg_catalog.pg_get_indexdef(i.indexrelid, 0, TRUE) AS index_def,
+       pg_catalog.pg_get_constraintdef(con.oid, TRUE) AS constraint_def
 FROM pg_catalog.pg_class c,
      pg_catalog.pg_class c2,
      pg_catalog.pg_namespace n,
@@ -126,20 +126,20 @@ ORDER BY n.nspname,
 
 		result = db.run_query(query)
 		for row in result:
-			row['indexedcolumns'] = map(int, str(row['indexedcolumns']).split())
+			row['columns'] = map(int, str(row['columns']).split())
 		return(result)
 
 
 	def Constraints(self):
 		query = """
-SELECT n.nspname AS SCHEMA,
-       c.relname AS TABLE,
-       conname AS constraintname,
-       pg_catalog.pg_get_constraintdef(r.oid, TRUE) AS constraintdef,
-       r.conkey AS localcolumns,
-       n2.nspname AS foreignschema,
-       c2.relname AS foreigntable,
-       r.confkey AS foreigncolumns
+SELECT n.nspname AS schema,
+       c.relname AS table,
+       conname AS name,
+       pg_catalog.pg_get_constraintdef(r.oid, TRUE) AS constraint_def,
+       r.conkey AS columns,
+       n2.nspname AS foreign_schema,
+       c2.relname AS foreign_table,
+       r.confkey AS foreign_columns
 FROM pg_catalog.pg_class c
 LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_catalog.pg_constraint r ON r.conrelid = c.oid
@@ -152,13 +152,13 @@ WHERE r.contype = 'f'
   AND pg_catalog.pg_table_is_visible(c.oid)
 ORDER BY n.nspname,
          c.relname,
-         constraintname;
+         name;
 """
 		#FIXME: This probably misses check constraints and others?
 		result = db.run_query(query)
 		for row in result:
-			row['foreigncolumns'] = map(int, row['foreigncolumns'].strip('{}').split(','))
-			row['localcolumns'] = map(int, row['localcolumns'].strip('{}').split(','))
+			row['foreign_columns'] = map(int, row['foreign_columns'].strip('{}').split(','))
+			row['columns'] = map(int, row['columns'].strip('{}').split(','))
 		return(result)
 
 	def Triggers(self):
@@ -707,8 +707,8 @@ def fetch_postgres_information():
 		tablekey = '.'.join([row['schema'], row['table']])
 		if not tablekey in schema:
 			schema[tablekey] = {}
-		schema[tablekey]['schema'] = row.pop('schema')
-		schema[tablekey]['table'] = row.pop('table')
+		schema[tablekey]['schema_name'] = row.pop('schema')
+		schema[tablekey]['table_name'] = row.pop('table')
 		schema[tablekey]['size_bytes'] = row.pop('tablesize')
 		if not 'columns' in schema[tablekey]:
 			schema[tablekey]['columns'] = []
