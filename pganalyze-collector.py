@@ -747,18 +747,17 @@ def post_data_to_web(data):
 	to_post['options']['query_parameters'] = option['queryparameters']
 	to_post['options']['system_information'] = option['systeminformation']
 
-	# These will dump the Python dict with Python bools. The posted values will have json semantics (e.g. true/false/null for bools)
 	if option['dryrun']:
 		logger.info("Dumping data that would get posted")
 
+		to_post['data'] = json.loads(to_post['data'])
+		for query in to_post['data']['queries']:
+			for plan in query['plans']:
+				if 'explain' in plan:
+					plan['explain'] = json.loads(plan['explain'])
 		if option['printjson']:
-			print(to_post)
+			print(json.dumps(to_post))
 		else:
-			to_post['data'] = json.loads(to_post['data'])
-			for query in to_post['data']['queries']:
-				for plan in query['plans']:
-					if 'explain' in plan:
-						plan['explain'] = json.loads(plan['explain'])
 			pprint(to_post)
 
 		logger.info("Exiting.")
