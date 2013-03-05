@@ -94,7 +94,7 @@ ORDER BY n.nspname,
 SELECT n.nspname AS schema,
        c.relname AS table,
        i.indkey AS columns,
-       c2.relname AS indexname,
+       c2.relname AS name,
        pg_relation_size(c2.oid) AS size_bytes,
        i.indisprimary AS is_primary,
        i.indisunique AS is_unique,
@@ -173,6 +173,35 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
 	def Version(self):
 		query = "SELECT VERSION()"
 		return db.run_query("SELECT VERSION()")[0]['version']
+
+	def TableStats(self):
+		query = "SELECT * FROM pg_stat_user_tables s JOIN pg_statio_user_tables sio ON s.relid = sio.relid"
+		result = db.run_query(query)
+
+		for row in result:
+			del row['relid']
+			row['table'] = row.pop('relname')
+			row['schema'] = row.pop('schemaname')
+
+		return(result)
+
+
+	def IndexStats(self):
+		query = "SELECT * FROM pg_stat_user_indexes s JOIN pg_statio_user_indexes sio ON s.indexrelid = sio.indexrelid"
+		result = db.run_query(query)
+
+		for row in result:
+			del row['relid']
+			del row['indexrelid']
+			row['table'] = row.pop('relname')
+			row['schema'] = row.pop('schemaname')
+			row['index'] = row.pop('indexrelname')
+
+		return(result)
+
+	def BGWriterStats(self):
+		return
+	
 
 
 class SystemInformation():
@@ -708,22 +737,45 @@ def fetch_postgres_information():
 	info = {}
 	schema = {}
 
+	indexstats = {}
+	tablestats = {}
+
+	#Prepare stats for later merging
+	for row in PI.IndexStats():
+		del row['table']
+		indexkey = '.'.join([row.pop('schema'), row.pop('index')])
+		indexstats[indexkey] = row
+
+	for row in PI.TableStats():
+		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
+		tablestats[tablekey] = row
+	
+
+	#Prepare schema dict
 	for row in PI.Columns():
 		tablekey = '.'.join([row['schema'], row['table']])
 		if not tablekey in schema:
 			schema[tablekey] = {}
+
 		schema[tablekey]['schema_name'] = row.pop('schema')
 		schema[tablekey]['table_name'] = row.pop('table')
 		schema[tablekey]['size_bytes'] = row.pop('tablesize')
+		schema[tablekey]['stats'] = tablestats[tablekey]
+
 		if not 'columns' in schema[tablekey]:
 			schema[tablekey]['columns'] = []
 		schema[tablekey]['columns'].append(row)
 
 	for row in PI.Indexes():
+		statskey = '.'.join([row['schema'], row['name']])
 		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
-		if not 'indexes' in schema[tablekey]:
-			schema[tablekey]['indexes'] = []
-		schema[tablekey]['indexes'].append(row)
+
+		#Merge index stats
+		row = dict(row.items() + indexstats[statskey].items())
+
+		if not 'indices' in schema[tablekey]:
+			schema[tablekey]['indices'] = []
+		schema[tablekey]['indices'].append(row)
 
 	for row in PI.Constraints():
 		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
@@ -731,6 +783,7 @@ def fetch_postgres_information():
 			schema[tablekey]['constraints'] = []
 		schema[tablekey]['constraints'].append(row)
 
+	#Finishing touch
 	info['schema'] = schema.values()
 	info['version'] = PI.Version()
 
