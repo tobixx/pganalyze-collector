@@ -170,6 +170,9 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
         WHERE t.tgrelid = '16795' AND NOT t.tgisinternal
         ORDER BY 1
 """
+	def Version(self):
+		query = "SELECT VERSION()"
+		return db.run_query("SELECT VERSION()")[0]['version']
 
 
 class SystemInformation():
@@ -729,6 +732,7 @@ def fetch_postgres_information():
 		schema[tablekey]['constraints'].append(row)
 
 	info['schema'] = schema.values()
+	info['version'] = PI.Version()
 
 	return(info)
 
