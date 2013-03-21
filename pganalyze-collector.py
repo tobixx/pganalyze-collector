@@ -205,8 +205,6 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
 class SystemInformation():
     def __init__(self):
         self.system = platform.system()
-        if self.system != 'Linux':
-            raise Exception("Unsupported system: %s" % self.system)
 
     def OS(self):
         os = {}
@@ -278,6 +276,7 @@ class SystemInformation():
 
     def Scheduler(self):
         result = {}
+        if self.system != 'Linux': return None
 
         with open('/proc/stat', 'r') as f:
             os_counters = f.readlines()
@@ -304,6 +303,8 @@ class SystemInformation():
 
     def Storage(self):
         result = {}
+
+        if self.system != 'Linux': return None
 
         # FIXME: Collect information for all tablespaces and pg_xlog
 
@@ -349,6 +350,9 @@ class SystemInformation():
 
     def Memory(self):
         result = {}
+
+        if self.system != 'Linux': return None
+
         with open('/proc/meminfo') as f:
             meminfo = f.readlines()
 
