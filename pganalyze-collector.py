@@ -49,13 +49,12 @@ VERSION = '0.2.1-dev'
 
 
 class PostgresInformation():
+    def __init__(self):
+        return
 
-	def __init__(self):
-		return
 
-
-	def Columns(self):
-		query = """
+    def Columns(self):
+        query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
        pg_catalog.pg_table_size(c.oid) AS tablesize,
@@ -82,15 +81,14 @@ ORDER BY n.nspname,
          c.relname,
          a.attnum;
 """
-		#FIXME: toast handling, table inheritance
+        #FIXME: toast handling, table inheritance
 
-		result = db.run_query(query)
-		return(result)
+        result = db.run_query(query)
+        return (result)
 
 
-
-	def Indexes(self):
-		query = """
+    def Indexes(self):
+        query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
        i.indkey AS columns,
@@ -122,16 +120,16 @@ ORDER BY n.nspname,
          i.indisunique DESC,
          c2.relname;
 """
-		#FIXME: column references for index expressions
+        #FIXME: column references for index expressions
 
-		result = db.run_query(query)
-		for row in result:
-			row['columns'] = map(int, str(row['columns']).split())
-		return(result)
+        result = db.run_query(query)
+        for row in result:
+            row['columns'] = map(int, str(row['columns']).split())
+        return (result)
 
 
-	def Constraints(self):
-		query = """
+    def Constraints(self):
+        query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
        conname AS name,
@@ -154,681 +152,672 @@ ORDER BY n.nspname,
          c.relname,
          name;
 """
-		#FIXME: This probably misses check constraints and others?
-		result = db.run_query(query)
-		for row in result:
-			row['foreign_columns'] = map(int, row['foreign_columns'].strip('{}').split(','))
-			row['columns'] = map(int, row['columns'].strip('{}').split(','))
-		return(result)
+        #FIXME: This probably misses check constraints and others?
+        result = db.run_query(query)
+        for row in result:
+            row['foreign_columns'] = map(int, row['foreign_columns'].strip('{}').split(','))
+            row['columns'] = map(int, row['columns'].strip('{}').split(','))
+        return (result)
 
-	def Triggers(self):
+    def Triggers(self):
 
-		#FIXME: Fix query
-		query = """
+        #FIXME: Fix query
+        query = """
 SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
         FROM pg_catalog.pg_trigger t
         WHERE t.tgrelid = '16795' AND NOT t.tgisinternal
         ORDER BY 1
 """
-	def Version(self):
-		query = "SELECT VERSION()"
-		return db.run_query("SELECT VERSION()")[0]['version']
 
-	def TableStats(self):
-		query = "SELECT * FROM pg_stat_user_tables s JOIN pg_statio_user_tables sio ON s.relid = sio.relid"
-		result = db.run_query(query)
+    def Version(self):
+        query = "SELECT VERSION()"
+        return db.run_query("SELECT VERSION()")[0]['version']
 
-		for row in result:
-			del row['relid']
-			row['table'] = row.pop('relname')
-			row['schema'] = row.pop('schemaname')
+    def TableStats(self):
+        query = "SELECT * FROM pg_stat_user_tables s JOIN pg_statio_user_tables sio ON s.relid = sio.relid"
+        result = db.run_query(query)
 
-		return(result)
+        for row in result:
+            del row['relid']
+            row['table'] = row.pop('relname')
+            row['schema'] = row.pop('schemaname')
+
+        return (result)
 
 
-	def IndexStats(self):
-		query = "SELECT * FROM pg_stat_user_indexes s JOIN pg_statio_user_indexes sio ON s.indexrelid = sio.indexrelid"
-		result = db.run_query(query)
+    def IndexStats(self):
+        query = "SELECT * FROM pg_stat_user_indexes s JOIN pg_statio_user_indexes sio ON s.indexrelid = sio.indexrelid"
+        result = db.run_query(query)
 
-		for row in result:
-			del row['relid']
-			del row['indexrelid']
-			row['table'] = row.pop('relname')
-			row['schema'] = row.pop('schemaname')
-			row['index'] = row.pop('indexrelname')
+        for row in result:
+            del row['relid']
+            del row['indexrelid']
+            row['table'] = row.pop('relname')
+            row['schema'] = row.pop('schemaname')
+            row['index'] = row.pop('indexrelname')
 
-		return(result)
+        return (result)
 
-	def BGWriterStats(self):
-		return
-	
+    def BGWriterStats(self):
+        return
 
 
 class SystemInformation():
+    def __init__(self):
+        self.system = platform.system()
+        if self.system != 'Linux':
+            raise Exception("Unsupported system: %s" % self.system)
 
-	def __init__(self):
-		self.system = platform.system()
-		if self.system != 'Linux':
-			raise Exception("Unsupported system: %s" % self.system)
+    def OS(self):
+        os = {}
+        os['system'] = platform.system()
+        if self.system == 'Linux':
+            (os['distribution'], os['distribution_version']) = platform.linux_distribution()[0:2]
+        elif self.system == 'Darwin':
+            os['distribution'] = 'OS X'
+            os['distribution_version'] = platform.mac_ver()[0]
 
-	def OS(self):
-		os = {}
-		os['system'] = platform.system()
-		if self.system == 'Linux':
-			(os['distribution'], os['distribution_version']) = platform.linux_distribution()[0:2]
-		elif self.system == 'Darwin':
-			os['distribution'] = 'OS X'
-			os['distribution_version'] = platform.mac_ver()[0]
+        os['architecture'] = platform.machine()
+        os['kernel_version'] = platform.release()
 
-		os['architecture'] = platform.machine()
-		os['kernel_version'] = platform.release()
-
-		# This only works when run as root - maybe drop again?
-		dmidecode = find_executable_in_path('dmidecode')
-		if dmidecode:
-			try:
-				vendor = subprocess.check_output([dmidecode, '-s', 'system-manufacturer']).strip()
-				model = subprocess.check_output([dmidecode, '-s', 'system-product-name']).strip()
-				if vendor and model:
-					os['server_model'] = "%s %s" % (vendor, model)
-
-
-			except Exception as e:
-				logger.debug("Error while collecting system manufacturer/model via dmidecode: %s" % e)
-
-		return os
+        # This only works when run as root - maybe drop again?
+        dmidecode = find_executable_in_path('dmidecode')
+        if dmidecode:
+            try:
+                vendor = subprocess.check_output([dmidecode, '-s', 'system-manufacturer']).strip()
+                model = subprocess.check_output([dmidecode, '-s', 'system-product-name']).strip()
+                if vendor and model:
+                    os['server_model'] = "%s %s" % (vendor, model)
 
 
-	def CPU(self):
-		result = {}
-		if self.system != 'Linux': return None
+            except Exception as e:
+                logger.debug("Error while collecting system manufacturer/model via dmidecode: %s" % e)
 
-		with open('/proc/stat', 'r') as f:
-			procstat = f.readlines()
-
-		# Fetch combined CPU counter from lines
-		os_counters = filter(lambda x: x.find('cpu ') == 0, procstat)[0]
-
-		# tokenize, strip row heading
-		os_counters = os_counters.split()[1:]
-
-		# Correct all values to msec
-		kernel_hz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
-		os_counters = map(lambda x: int(x) * (1000 / kernel_hz), os_counters)
-
-		os_counter_names = [ 'user_msec', 'nice_msec', 'system_msec', 'idle_msec', 'iowait_msec',
-				     'irq_msec', 'softirq_msec', 'steal_msec', 'guest_msec', 'guest_nice_msec']
-
-		result['busy_times'] = dict(zip(os_counter_names, os_counters))
+        return os
 
 
-		with open('/proc/cpuinfo', 'r') as f:
-			cpuinfo = f.readlines()
+    def CPU(self):
+        result = {}
+        if self.system != 'Linux': return None
 
-		# Trim excessive whitespace in strings, return two elements per line
-		cpuinfo = map(lambda x: " ".join(x.split()).split(' : '), cpuinfo)
+        with open('/proc/stat', 'r') as f:
+            procstat = f.readlines()
 
-		hardware = {}
-		hardware['model'] = next(l[1] for l in cpuinfo if l[0] == 'model name')
-		hardware['cache_size'] = next(l[1] for l in cpuinfo if l[0] == 'cache size')
-		hardware['speed_mhz'] = next(round(float(l[1]),2) for l in cpuinfo if l[0] == 'cpu MHz')
-		hardware['sockets'] = int(max([l[1] for l in cpuinfo if l[0] == 'physical id'])) + 1
-		hardware['cores_per_socket'] = next(int(l[1]) for l in cpuinfo if l[0] == 'cpu cores')
+        # Fetch combined CPU counter from lines
+        os_counters = filter(lambda x: x.find('cpu ') == 0, procstat)[0]
 
-		result['hardware'] = hardware
+        # tokenize, strip row heading
+        os_counters = os_counters.split()[1:]
 
+        # Correct all values to msec
+        kernel_hz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
+        os_counters = map(lambda x: int(x) * (1000 / kernel_hz), os_counters)
 
-		return(result)
+        os_counter_names = ['user_msec', 'nice_msec', 'system_msec', 'idle_msec', 'iowait_msec',
+                            'irq_msec', 'softirq_msec', 'steal_msec', 'guest_msec', 'guest_nice_msec']
 
+        result['busy_times'] = dict(zip(os_counter_names, os_counters))
 
-	def Scheduler(self):
-		result = {}
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.readlines()
 
-		with open('/proc/stat', 'r') as f:
-			os_counters = f.readlines()
+        # Trim excessive whitespace in strings, return two elements per line
+        cpuinfo = map(lambda x: " ".join(x.split()).split(' : '), cpuinfo)
 
-		os_counters = [l.split() for l in os_counters if len(l) > 1]
+        hardware = {}
+        hardware['model'] = next(l[1] for l in cpuinfo if l[0] == 'model name')
+        hardware['cache_size'] = next(l[1] for l in cpuinfo if l[0] == 'cache size')
+        hardware['speed_mhz'] = next(round(float(l[1]), 2) for l in cpuinfo if l[0] == 'cpu MHz')
+        hardware['sockets'] = int(max([l[1] for l in cpuinfo if l[0] == 'physical id'])) + 1
+        hardware['cores_per_socket'] = next(int(l[1]) for l in cpuinfo if l[0] == 'cpu cores')
 
+        result['hardware'] = hardware
 
-		result['interrupts'] = next(int(l[1]) for l in os_counters if l[0] == 'intr')
-		result['context_switches'] = next(int(l[1]) for l in os_counters if l[0] == 'ctxt')
-		result['procs_running'] = next(int(l[1]) for l in os_counters if l[0] == 'procs_running')
-		result['procs_blocked'] = next(int(l[1]) for l in os_counters if l[0] == 'procs_blocked')
-		result['procs_created'] = next(int(l[1]) for l in os_counters if l[0] == 'processes')
-
-
-		with open('/proc/loadavg', 'r') as f:
-			loadavg = f.readlines()
-
-		loadavg = map(lambda x: float(x), loadavg[0].split()[:3])
-
-		result['loadavg_1min'] = loadavg[0]
-		result['loadavg_5min'] = loadavg[1]
-		result['loadavg_15min'] = loadavg[2]
-
-		return(result)
+        return (result)
 
 
+    def Scheduler(self):
+        result = {}
 
-	def Storage(self):
-		result = {}
+        with open('/proc/stat', 'r') as f:
+            os_counters = f.readlines()
 
-		# FIXME: Collect information for all tablespaces and pg_xlog
+        os_counters = [l.split() for l in os_counters if len(l) > 1]
 
-		data_directory = db.run_query('SHOW data_directory')[0]['data_directory']
+        result['interrupts'] = next(int(l[1]) for l in os_counters if l[0] == 'intr')
+        result['context_switches'] = next(int(l[1]) for l in os_counters if l[0] == 'ctxt')
+        result['procs_running'] = next(int(l[1]) for l in os_counters if l[0] == 'procs_running')
+        result['procs_blocked'] = next(int(l[1]) for l in os_counters if l[0] == 'procs_blocked')
+        result['procs_created'] = next(int(l[1]) for l in os_counters if l[0] == 'processes')
 
-		result['name'] = 'PGDATA directory'
-		result['path'] = data_directory
-		result['mountpoint'] = self._find_mount_point(data_directory)
+        with open('/proc/loadavg', 'r') as f:
+            loadavg = f.readlines()
 
-		vfs_stats = os.statvfs(data_directory)
+        loadavg = map(lambda x: float(x), loadavg[0].split()[:3])
 
-		result['bytes_total'] = vfs_stats.f_bsize * vfs_stats.f_blocks
-		result['bytes_available'] = vfs_stats.f_bsize * vfs_stats.f_bavail
+        result['loadavg_1min'] = loadavg[0]
+        result['loadavg_5min'] = loadavg[1]
+        result['loadavg_15min'] = loadavg[2]
 
-		devicenode = os.stat(data_directory).st_dev
-		major = os.major(devicenode)
-		minor = os.minor(devicenode)
-
-		sysfs_device_path = "/sys/dev/block/%d:%d/" % (major, minor)
-
-		# not all devices have stats
-		if os.path.exists(sysfs_device_path + 'stat'):
-			with open(sysfs_device_path + 'stat', 'r') as f:
-				device_stats = map(int, f.readline().split())
+        return (result)
 
 
-			stat_fields = [ 'rd_ios', 'rd_merges', 'rd_sectors', 'rd_ticks',
-					'wr_ios', 'wr_merges', 'wr_sectors', 'wr_ticks',
-					'ios_in_prog', 'tot_ticks', 'rq_ticks' ]
+    def Storage(self):
+        result = {}
 
-			result['perfdata'] = dict(zip(stat_fields, device_stats))
+        # FIXME: Collect information for all tablespaces and pg_xlog
 
-		# Vendor/Model doesn't exist for metadevices
-		if os.path.exists(sysfs_device_path + 'device/vendor'):
-			with open(sysfs_device_path + 'device/vendor', 'r') as f:
-				vendor = f.readline().trim()
+        data_directory = db.run_query('SHOW data_directory')[0]['data_directory']
 
-			with open(sysfs_device_path + 'device/model', 'r') as f:
-				model = f.readline().trim()
+        result['name'] = 'PGDATA directory'
+        result['path'] = data_directory
+        result['mountpoint'] = self._find_mount_point(data_directory)
 
-			result['hardware'] = " ".join(vendor, model)
+        vfs_stats = os.statvfs(data_directory)
 
-		return([result])
-	
-	def Memory(self):
-		result = {}
-		with open('/proc/meminfo') as f:
-			meminfo = f.readlines()
+        result['bytes_total'] = vfs_stats.f_bsize * vfs_stats.f_blocks
+        result['bytes_available'] = vfs_stats.f_bsize * vfs_stats.f_bavail
 
-		# Strip whitespace, drop kb suffix, split into two elements
-		meminfo = dict(map(lambda x: " ".join(x.split()[:2]).split(': '), meminfo))
-		
-		# Initialize missing fields (openvz et al), convert to bytes
-		for k in ['MemTotal', 'MemFree', 'Buffers', 'Cached', 'SwapTotal', 'SwapFree', 'Dirty', 'Writeback']:
-			if not meminfo.get(k):
-				meminfo[k] = 0
-			else:
-				meminfo[k] = int(meminfo[k]) * 1024
+        devicenode = os.stat(data_directory).st_dev
+        major = os.major(devicenode)
+        minor = os.minor(devicenode)
 
-		result['total_bytes'] = meminfo['MemTotal']
-		result['buffers_bytes'] = meminfo['Buffers']
-		result['pagecache_bytes'] = meminfo['Cached']
-		result['free_bytes'] = meminfo['MemFree'] 
-		result['applications_bytes'] = meminfo['MemTotal'] - meminfo['MemFree'] - meminfo['Buffers'] - meminfo['Cached']
-		result['dirty_bytes'] = meminfo['Dirty']
-		result['writeback_bytes'] = meminfo['Writeback']
-		result['swap_total_bytes'] = meminfo['SwapTotal']
-		result['swap_free_bytes'] = meminfo['SwapFree']
+        sysfs_device_path = "/sys/dev/block/%d:%d/" % (major, minor)
 
-		return(result)
+        # not all devices have stats
+        if os.path.exists(sysfs_device_path + 'stat'):
+            with open(sysfs_device_path + 'stat', 'r') as f:
+                device_stats = map(int, f.readline().split())
 
-	def _find_mount_point(self, path):
-		path = os.path.abspath(path)
-		while not os.path.ismount(path):
-			path = os.path.dirname(path)
-		return path
+            stat_fields = ['rd_ios', 'rd_merges', 'rd_sectors', 'rd_ticks',
+                           'wr_ios', 'wr_merges', 'wr_sectors', 'wr_ticks',
+                           'ios_in_prog', 'tot_ticks', 'rq_ticks']
+
+            result['perfdata'] = dict(zip(stat_fields, device_stats))
+
+        # Vendor/Model doesn't exist for metadevices
+        if os.path.exists(sysfs_device_path + 'device/vendor'):
+            with open(sysfs_device_path + 'device/vendor', 'r') as f:
+                vendor = f.readline().trim()
+
+            with open(sysfs_device_path + 'device/model', 'r') as f:
+                model = f.readline().trim()
+
+            result['hardware'] = " ".join(vendor, model)
+
+        return ([result])
+
+    def Memory(self):
+        result = {}
+        with open('/proc/meminfo') as f:
+            meminfo = f.readlines()
+
+        # Strip whitespace, drop kb suffix, split into two elements
+        meminfo = dict(map(lambda x: " ".join(x.split()[:2]).split(': '), meminfo))
+
+        # Initialize missing fields (openvz et al), convert to bytes
+        for k in ['MemTotal', 'MemFree', 'Buffers', 'Cached', 'SwapTotal', 'SwapFree', 'Dirty', 'Writeback']:
+            if not meminfo.get(k):
+                meminfo[k] = 0
+            else:
+                meminfo[k] = int(meminfo[k]) * 1024
+
+        result['total_bytes'] = meminfo['MemTotal']
+        result['buffers_bytes'] = meminfo['Buffers']
+        result['pagecache_bytes'] = meminfo['Cached']
+        result['free_bytes'] = meminfo['MemFree']
+        result['applications_bytes'] = meminfo['MemTotal'] - meminfo['MemFree'] - meminfo['Buffers'] - meminfo['Cached']
+        result['dirty_bytes'] = meminfo['Dirty']
+        result['writeback_bytes'] = meminfo['Writeback']
+        result['swap_total_bytes'] = meminfo['SwapTotal']
+        result['swap_free_bytes'] = meminfo['SwapFree']
+
+        return (result)
+
+    def _find_mount_point(self, path):
+        path = os.path.abspath(path)
+        while not os.path.ismount(path):
+            path = os.path.dirname(path)
+        return path
 
 
 class PSQL():
-	def __init__(self, dbname, username=None, password=None, psql=None, host=None, port=None):
-		self.psql = psql or self._find_psql()
+    def __init__(self, dbname, username=None, password=None, psql=None, host=None, port=None):
+        self.psql = psql or self._find_psql()
 
-		if not self.psql:
-			raise Exception('Please specify path to psql binary')
+        if not self.psql:
+            raise Exception('Please specify path to psql binary')
 
-		logger.debug("Using %s as psql binary" % self.psql)
-		
-		# Setting up environment for psql
-		logger.debug("Setting PGDATABASE to %s" % dbname)
-		os.environ['PGDATABASE'] = dbname
-		if username:
-			os.environ['PGUSER'] = username
-			logger.debug("Setting PGUSER to %s" % username)
-		if password:
-			os.environ['PGPASSWORD'] = password
-			logger.debug("Setting PGPASSWORD")
-		if host:
-			os.environ['PGHOST'] = host
-			logger.debug("Setting PGHOST to %s" % host)
-		if port:
-			os.environ['PGPORT'] = port
-			logger.debug("Setting PGPORT to %s" % port)
+        logger.debug("Using %s as psql binary" % self.psql)
 
-	def run_query(self, query, should_raise=False, ignore_noncrit=False):
+        # Setting up environment for psql
+        logger.debug("Setting PGDATABASE to %s" % dbname)
+        os.environ['PGDATABASE'] = dbname
+        if username:
+            os.environ['PGUSER'] = username
+            logger.debug("Setting PGUSER to %s" % username)
+        if password:
+            os.environ['PGPASSWORD'] = password
+            logger.debug("Setting PGPASSWORD")
+        if host:
+            os.environ['PGHOST'] = host
+            logger.debug("Setting PGHOST to %s" % host)
+        if port:
+            os.environ['PGPORT'] = port
+            logger.debug("Setting PGPORT to %s" % port)
 
-		logger.debug("Running query: %s" % query)
+    def run_query(self, query, should_raise=False, ignore_noncrit=False):
 
-		colsep = unichr(0x2764)
+        logger.debug("Running query: %s" % query)
 
-		cmd = [self.psql, "-F" + colsep.encode('utf-8'), '--no-align', '--no-password', '--no-psqlrc']
-		lines = []
+        colsep = unichr(0x2764)
 
-		p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        cmd = [self.psql, "-F" + colsep.encode('utf-8'), '--no-align', '--no-password', '--no-psqlrc']
+        lines = []
 
-		(stdout, stderr) = p.communicate(query)
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        (stdout, stderr) = p.communicate(query)
 
 
-		# Fail on all invocations where exitstatus is non-zero
-		# When exitstatus is zero, we might have only encountered notices or warnings which might be expected.
-		if p.returncode != 0 or (stderr and ignore_noncrit == False):
-			if should_raise:
-				raise Exception(stderr)
-			logger.error("Got an error during query execution, exitstatus: %s:" % p.returncode)
-			for line in stderr.splitlines():
-				logger.error(line)
-			sys.exit(1)
+        # Fail on all invocations where exitstatus is non-zero
+        # When exitstatus is zero, we might have only encountered notices or warnings which might be expected.
+        if p.returncode != 0 or (stderr and ignore_noncrit == False):
+            if should_raise:
+                raise Exception(stderr)
+            logger.error("Got an error during query execution, exitstatus: %s:" % p.returncode)
+            for line in stderr.splitlines():
+                logger.error(line)
+            sys.exit(1)
 
-		# If we've got anything left in stderr it's probably warning/notices. Dump them to debug
-		if stderr:
-                        logger.debug("Encountered warnings/notices:")
-			for line in stderr.splitlines():
-				logger.debug(line)
+        # If we've got anything left in stderr it's probably warning/notices. Dump them to debug
+        if stderr:
+            logger.debug("Encountered warnings/notices:")
+            for line in stderr.splitlines():
+                logger.debug(line)
 
-		stdout = stdout.decode('utf-8')
-		lines = stdout.splitlines()
+        stdout = stdout.decode('utf-8')
+        lines = stdout.splitlines()
 
-		# Drop number of rows
-		lines.pop()
-		# FIXME: Skip first row if it's from a SET statement
-		if lines[0] == 'SET':
-			lines.pop(0)
-		# Fetch column headers
-		columns = lines.pop(0).strip().split(colsep)
+        # Drop number of rows
+        lines.pop()
+        # FIXME: Skip first row if it's from a SET statement
+        if lines[0] == 'SET':
+            lines.pop(0)
+        # Fetch column headers
+        columns = lines.pop(0).strip().split(colsep)
 
-		resultset = []
-		for line in lines:
-			values = line.strip().split(colsep)
-			values = self._magic_cast(values)
-			resultset.append(dict(zip(columns, values)))
+        resultset = []
+        for line in lines:
+            values = line.strip().split(colsep)
+            values = self._magic_cast(values)
+            resultset.append(dict(zip(columns, values)))
 
-		return resultset
+        return resultset
 
-	def ping(self):
-		logger.debug("Pinging database")
-		self.run_query('SELECT 1')
-		return True
+    def ping(self):
+        logger.debug("Pinging database")
+        self.run_query('SELECT 1')
+        return True
 
-	def _find_psql(self):
-		logger.debug("Searching for PSQL binary")
-		return find_executable_in_path('psql')
+    def _find_psql(self):
+        logger.debug("Searching for PSQL binary")
+        return find_executable_in_path('psql')
 
-	def _magic_cast(self, values):
-		nicevalues = []
-		for value in values:
-			try:
-				nicevalues.append(int(value))
-				continue
-			except Exception as e:
-				pass
+    def _magic_cast(self, values):
+        nicevalues = []
+        for value in values:
+            try:
+                nicevalues.append(int(value))
+                continue
+            except Exception as e:
+                pass
 
-			if value == 't':
-				nicevalues.append(True)
-				continue
+            if value == 't':
+                nicevalues.append(True)
+                continue
 
-			if value == 'f':
-				nicevalues.append(False)
-				continue
-			
-			nicevalues.append(value)
-		return(nicevalues)
+            if value == 'f':
+                nicevalues.append(False)
+                continue
+
+            nicevalues.append(value)
+        return (nicevalues)
 
 
 def find_executable_in_path(cmd):
-	for path in os.environ['PATH'].split(os.pathsep):
-		test = "%s/%s" % (path, cmd)
-		logger.debug("Testing %s" % test)
-		if os.path.isfile(test) and os.access(test, os.X_OK):
-			return test
-	return None
-
+    for path in os.environ['PATH'].split(os.pathsep):
+        test = "%s/%s" % (path, cmd)
+        logger.debug("Testing %s" % test)
+        if os.path.isfile(test) and os.access(test, os.X_OK):
+            return test
+    return None
 
 
 def check_database():
-	global db
-	db = PSQL(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
+    global db
+    db = PSQL(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
 
-	if not db.ping():
-		logger.error("Can't run query against the database")
-		sys.exit(1)
-	
-	if not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
-		logger.error("User %s isn't a superuser" % db_username)
-		sys.exit(1)
+    if not db.ping():
+        logger.error("Can't run query against the database")
+        sys.exit(1)
 
-	if not int(db.run_query('SHOW server_version_num')[0]['server_version_num']) >= 90100:
-		logger.error("You must be running PostgreSQL 9.1 or newer")
-		sys.exit(1)
+    if not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
+        logger.error("User %s isn't a superuser" % db_username)
+        sys.exit(1)
 
-	try:
-		if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", True)[0]['foo'] == 1:
-			logger.error("Extension pg_stat_plans isn't installed")
-			sys.exit(1)
-	except Exception as e:
-		logger.error("Table pg_extension doesn't exist - this shouldn't happen")
-		sys.exit(1)
+    if not int(db.run_query('SHOW server_version_num')[0]['server_version_num']) >= 90100:
+        logger.error("You must be running PostgreSQL 9.1 or newer")
+        sys.exit(1)
+
+    try:
+        if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", True)[0][
+            'foo'] == 1:
+            logger.error("Extension pg_stat_plans isn't installed")
+            sys.exit(1)
+    except Exception as e:
+        logger.error("Table pg_extension doesn't exist - this shouldn't happen")
+        sys.exit(1)
 
 
 def parse_options(print_help=False):
-	parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
+    parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
 
-	parser.add_option('-v', '--verbose', action='store_true', dest='verbose',
-			help='Print verbose debug information')
-	parser.add_option('--config', action='store', type='string', dest='configfile',
-			default='$HOME/.pganalyze_collector.conf, /etc/pganalyze_collector.conf',
-			help='Specifiy alternative path for config file. Defaults: %default')
-	parser.add_option('--generate-config', action='store_true', dest='generate_config',
-			help='Writes a default configuration file to $HOME/.pganalyze_collector.conf unless specified otherwise with --config')
-	parser.add_option('--cron', '-q', action='store_true', dest='quiet',
-			help='Suppress all non-warning output during normal operation')
-	parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
-			help='Print data that would get sent to web service and exit afterwards.')
-	parser.add_option('--print-json', action='store_true', dest='printjson',
-			help='Print a json string instead of pretty-printed Python structures. Requires --dry-run.')
-	parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
-			help='Don\'t reset statistics after posting to web. Only use for testing purposes.') 
-	parser.add_option('--no-query-parameters', action='store_false', dest='queryparameters',
-			default=True,
-			help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
-	parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
-			default=True,
-			help='Don\'t collect OS level performance data'),
+    parser.add_option('-v', '--verbose', action='store_true', dest='verbose',
+                      help='Print verbose debug information')
+    parser.add_option('--config', action='store', type='string', dest='configfile',
+                      default='$HOME/.pganalyze_collector.conf, /etc/pganalyze_collector.conf',
+                      help='Specifiy alternative path for config file. Defaults: %default')
+    parser.add_option('--generate-config', action='store_true', dest='generate_config',
+                      help='Writes a default configuration file to $HOME/.pganalyze_collector.conf unless specified otherwise with --config')
+    parser.add_option('--cron', '-q', action='store_true', dest='quiet',
+                      help='Suppress all non-warning output during normal operation')
+    parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
+                      help='Print data that would get sent to web service and exit afterwards.')
+    parser.add_option('--print-json', action='store_true', dest='printjson',
+                      help='Print a json string instead of pretty-printed Python structures. Requires --dry-run.')
+    parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
+                      help='Don\'t reset statistics after posting to web. Only use for testing purposes.')
+    parser.add_option('--no-query-parameters', action='store_false', dest='queryparameters',
+                      default=True,
+                      help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
+    parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
+                      default=True,
+                      help='Don\'t collect OS level performance data'),
 
-	if print_help:
-		parser.print_help()
-		return
+    if print_help:
+        parser.print_help()
+        return
 
-	(options, args) = parser.parse_args()
-	options = options.__dict__
-	options['configfile'] = re.split(',\s+', options['configfile'].replace('$HOME', os.environ['HOME']))
+    (options, args) = parser.parse_args()
+    options = options.__dict__
+    options['configfile'] = re.split(',\s+', options['configfile'].replace('$HOME', os.environ['HOME']))
 
-	return options
+    return options
 
 
 def configure_logger():
-	logtemp = logging.getLogger(MYNAME)
+    logtemp = logging.getLogger(MYNAME)
 
-	if option['verbose']:
-		logtemp.setLevel(logging.DEBUG)
-	else:
-		logtemp.setLevel(logging.INFO)
+    if option['verbose']:
+        logtemp.setLevel(logging.DEBUG)
+    else:
+        logtemp.setLevel(logging.INFO)
 
-	lh = logging.StreamHandler()
-	format = '%(levelname)s - %(asctime)s %(message)s'
-	lf = logging.Formatter(format)
-	lh.setFormatter(lf)
-	logtemp.addHandler(lh)
+    lh = logging.StreamHandler()
+    format = '%(levelname)s - %(asctime)s %(message)s'
+    lf = logging.Formatter(format)
+    lh.setFormatter(lf)
+    logtemp.addHandler(lh)
 
-	return logtemp
+    return logtemp
+
 
 def read_config():
-	logger.debug("Reading config")
+    logger.debug("Reading config")
 
-	configfile = None
-	for file in option['configfile']:
-		try:
-			mode = os.stat(file).st_mode
-		except Exception as e:
-			logger.debug("Couldn't stat file: %s" % e)
-			continue
+    configfile = None
+    for file in option['configfile']:
+        try:
+            mode = os.stat(file).st_mode
+        except Exception as e:
+            logger.debug("Couldn't stat file: %s" % e)
+            continue
 
-		if not S_ISREG(mode):
-			logger.debug("%s isn't a regular file" % file)
-			continue
+        if not S_ISREG(mode):
+            logger.debug("%s isn't a regular file" % file)
+            continue
 
-		if int(oct(mode)[-2:]) != 0:
-			logger.error("Configfile is accessible by other users, please run `chmod go-rwx %s`" % file)
-			sys.exit(1)
+        if int(oct(mode)[-2:]) != 0:
+            logger.error("Configfile is accessible by other users, please run `chmod go-rwx %s`" % file)
+            sys.exit(1)
 
-		if not os.access(file, os.R_OK):
-			logger.debug("%s isn't readable" % file)
-			continue
+        if not os.access(file, os.R_OK):
+            logger.debug("%s isn't readable" % file)
+            continue
 
-		configfile = file
-		break
+        configfile = file
+        break
 
-	if not configfile:
-		logger.error("Couldn't find a readable config file, perhaps create one with --generate-config?")
-		sys.exit(1)
+    if not configfile:
+        logger.error("Couldn't find a readable config file, perhaps create one with --generate-config?")
+        sys.exit(1)
 
-	configparser = ConfigParser.RawConfigParser()
+    configparser = ConfigParser.RawConfigParser()
 
-	try:
-		configparser.read(configfile)
-	except Exception as e:
-		logger.error("Failure while parsing %s: %s, please fix or create a new one with --generate-config" % (configfile, e))
-		sys.exit(1)
+    try:
+        configparser.read(configfile)
+    except Exception as e:
+        logger.error(
+            "Failure while parsing %s: %s, please fix or create a new one with --generate-config" % (configfile, e))
+        sys.exit(1)
 
-	configdump = {}
-	logger.debug("read config from %s" % configfile)
-	for k, v in configparser.items('pganalyze'):
-		configdump[k] = v
-		# Don't print the password to debug output
-		if k == 'db_password': v = '***removed***'
-		logger.debug("%s => %s" % (k, v))
+    configdump = {}
+    logger.debug("read config from %s" % configfile)
+    for k, v in configparser.items('pganalyze'):
+        configdump[k] = v
+        # Don't print the password to debug output
+        if k == 'db_password': v = '***removed***'
+        logger.debug("%s => %s" % (k, v))
 
-	# FIXME: Could do with a dict
-	global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
-	db_username = configdump.get('db_username')
-	db_password = configdump.get('db_password')
-	db_host = configdump.get('db_host')
-	# Set db_host to localhost if not specified and db_password present to force IP connection
-	if not db_host and db_password:
-		db_host = 'localhost'
-	db_port = configdump.get('db_port')
-	db_name = configdump.get('db_name')
-	api_key = configdump.get('api_key')
-	psql_binary = configdump.get('psql_binary')
+    # FIXME: Could do with a dict
+    global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
+    db_username = configdump.get('db_username')
+    db_password = configdump.get('db_password')
+    db_host = configdump.get('db_host')
+    # Set db_host to localhost if not specified and db_password present to force IP connection
+    if not db_host and db_password:
+        db_host = 'localhost'
+    db_port = configdump.get('db_port')
+    db_name = configdump.get('db_name')
+    api_key = configdump.get('api_key')
+    psql_binary = configdump.get('psql_binary')
 
-
-	if not db_name and api_key:
-		logger.error("Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
-		sys.exit(1)
+    if not db_name and api_key:
+        logger.error(
+            "Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
+        sys.exit(1)
 
 
 def fetch_queries():
-	both_fields = ["userid", "dbid",
-		"calls", "rows", "total_time",
-		"shared_blks_hit", "shared_blks_read", "shared_blks_written",
-		"local_blks_hit", "local_blks_written",
-		"temp_blks_read", "temp_blks_written"]
+    both_fields = ["userid", "dbid",
+                   "calls", "rows", "total_time",
+                   "shared_blks_hit", "shared_blks_read", "shared_blks_written",
+                   "local_blks_hit", "local_blks_written",
+                   "temp_blks_read", "temp_blks_written"]
 
-	query_fields = ["planids", "calls_per_plan", "avg_time_per_plan",
-		"time_variance", "time_stddev"] + both_fields
+    query_fields = ["planids", "calls_per_plan", "avg_time_per_plan",
+                    "time_variance", "time_stddev"] + both_fields
 
-	plan_fields = ["planid", "had_our_search_path", "from_our_database",
-		"query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
+    plan_fields = ["planid", "had_our_search_path", "from_our_database",
+                   "query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
-	query = "SELECT translate(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
-	query += ", translate(p.query, chr(10) || chr(13), '  ') AS p_query"
-	query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
-	query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
-	query += " FROM pg_stat_plans p"
-	query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.planids)"
-	# EXPLAIN, COPY and SET commands cannot be explained
-	query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)'"
-	# Plans in pg_catalog cannot be explained
-	query += " AND p.query !~* '\\spg_catalog\\.'"
-	# We don't want our stuff in the statistics
-	query += " AND p.query !~* '\\spg_stat_plans\\s'"
-	# Remove all plans which we can't explain
-	query += " AND p.from_our_database = TRUE"
-	query += " AND p.planid = ANY (pq.planids);"
+    query = "SELECT translate(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
+    query += ", translate(p.query, chr(10) || chr(13), '  ') AS p_query"
+    query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
+    query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
+    query += " FROM pg_stat_plans p"
+    query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.planids)"
+    # EXPLAIN, COPY and SET commands cannot be explained
+    query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)'"
+    # Plans in pg_catalog cannot be explained
+    query += " AND p.query !~* '\\spg_catalog\\.'"
+    # We don't want our stuff in the statistics
+    query += " AND p.query !~* '\\spg_stat_plans\\s'"
+    # Remove all plans which we can't explain
+    query += " AND p.from_our_database = TRUE"
+    query += " AND p.planid = ANY (pq.planids);"
 
-	fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
-	fetch_plan += "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
+    fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
+    fetch_plan += "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
 
-	queries = {}
+    queries = {}
 
-	# Fetch joined list of all queries and plans
-	for row in db.run_query(query, False, True):
+    # Fetch joined list of all queries and plans
+    for row in db.run_query(query, False, True):
 
-		# merge pg_stat_plans_queries values into result
-		query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
-		normalized_query = query['normalized_query']
+        # merge pg_stat_plans_queries values into result
+        query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
+        normalized_query = query['normalized_query']
 
-		logger.debug("Processing query: %s" % normalized_query)
+        logger.debug("Processing query: %s" % normalized_query)
 
-		# if we haven't seen the query yet - add it
-		if 'normalized_query' not in queries:
-			queries[normalized_query] = query
+        # if we haven't seen the query yet - add it
+        if 'normalized_query' not in queries:
+            queries[normalized_query] = query
 
-		# merge pg_stat_plans values into result
-		plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
+        # merge pg_stat_plans values into result
+        plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
 
-		# Delete parmaterized example queries if wanted
-		if not option['queryparameters']:
-			del(plan['query'])
+        # Delete parmaterized example queries if wanted
+        if not option['queryparameters']:
+            del (plan['query'])
 
-		# initialize plans array
-		if 'plans' not in queries[normalized_query]:
-			queries[normalized_query]['plans'] = []
+        # initialize plans array
+        if 'plans' not in queries[normalized_query]:
+            queries[normalized_query]['plans'] = []
 
-		# try explaining the query if pg_stat_plans thinks it's possible
-		if plan['query_explainable']:
-			try:
-				result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True, False)
-				plan['explain'] = result[0]['explain'] 
-			except Exception as e:
-				plan['explain_error'] = str(e)
-			
-		queries[normalized_query]['plans'].append(plan)
+        # try explaining the query if pg_stat_plans thinks it's possible
+        if plan['query_explainable']:
+            try:
+                result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True, False)
+                plan['explain'] = result[0]['explain']
+            except Exception as e:
+                plan['explain_error'] = str(e)
 
-	return queries.values()
+        queries[normalized_query]['plans'].append(plan)
+
+    return queries.values()
 
 
 def fetch_system_information():
+    SI = SystemInformation()
+    info = {}
 
-	SI = SystemInformation()
-	info = {}
+    info['os'] = SI.OS()
+    info['cpu'] = SI.CPU()
+    info['scheduler'] = SI.Scheduler()
+    info['storage'] = SI.Storage()
+    info['memory'] = SI.Memory()
 
-	info['os'] = SI.OS()
-	info['cpu'] = SI.CPU()
-	info['scheduler'] = SI.Scheduler()
-	info['storage'] = SI.Storage()
-	info['memory'] = SI.Memory()
+    return (info)
 
-	return(info)
 
 def fetch_postgres_information():
+    PI = PostgresInformation()
 
-	PI = PostgresInformation()
+    info = {}
+    schema = {}
 
-	info = {}
-	schema = {}
+    indexstats = {}
+    tablestats = {}
 
-	indexstats = {}
-	tablestats = {}
+    #Prepare stats for later merging
+    for row in PI.IndexStats():
+        del row['table']
+        indexkey = '.'.join([row.pop('schema'), row.pop('index')])
+        indexstats[indexkey] = row
 
-	#Prepare stats for later merging
-	for row in PI.IndexStats():
-		del row['table']
-		indexkey = '.'.join([row.pop('schema'), row.pop('index')])
-		indexstats[indexkey] = row
+    for row in PI.TableStats():
+        tablekey = '.'.join([row.pop('schema'), row.pop('table')])
+        tablestats[tablekey] = row
 
-	for row in PI.TableStats():
-		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
-		tablestats[tablekey] = row
-	
 
-	#Prepare schema dict
-	for row in PI.Columns():
-		tablekey = '.'.join([row['schema'], row['table']])
-		if not tablekey in schema:
-			schema[tablekey] = {}
+    #Prepare schema dict
+    for row in PI.Columns():
+        tablekey = '.'.join([row['schema'], row['table']])
+        if not tablekey in schema:
+            schema[tablekey] = {}
 
-		schema[tablekey]['schema_name'] = row.pop('schema')
-		schema[tablekey]['table_name'] = row.pop('table')
-		schema[tablekey]['size_bytes'] = row.pop('tablesize')
-		schema[tablekey]['stats'] = tablestats[tablekey]
+        schema[tablekey]['schema_name'] = row.pop('schema')
+        schema[tablekey]['table_name'] = row.pop('table')
+        schema[tablekey]['size_bytes'] = row.pop('tablesize')
+        schema[tablekey]['stats'] = tablestats[tablekey]
 
-		if not 'columns' in schema[tablekey]:
-			schema[tablekey]['columns'] = []
-		schema[tablekey]['columns'].append(row)
+        if not 'columns' in schema[tablekey]:
+            schema[tablekey]['columns'] = []
+        schema[tablekey]['columns'].append(row)
 
-	for row in PI.Indexes():
-		statskey = '.'.join([row['schema'], row['name']])
-		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
+    for row in PI.Indexes():
+        statskey = '.'.join([row['schema'], row['name']])
+        tablekey = '.'.join([row.pop('schema'), row.pop('table')])
 
-		#Merge index stats
-		row = dict(row.items() + indexstats[statskey].items())
+        #Merge index stats
+        row = dict(row.items() + indexstats[statskey].items())
 
-		if not 'indices' in schema[tablekey]:
-			schema[tablekey]['indices'] = []
-		schema[tablekey]['indices'].append(row)
+        if not 'indices' in schema[tablekey]:
+            schema[tablekey]['indices'] = []
+        schema[tablekey]['indices'].append(row)
 
-	for row in PI.Constraints():
-		tablekey = '.'.join([row.pop('schema'), row.pop('table')])
-		if not 'constraints' in schema[tablekey]:
-			schema[tablekey]['constraints'] = []
-		schema[tablekey]['constraints'].append(row)
+    for row in PI.Constraints():
+        tablekey = '.'.join([row.pop('schema'), row.pop('table')])
+        if not 'constraints' in schema[tablekey]:
+            schema[tablekey]['constraints'] = []
+        schema[tablekey]['constraints'].append(row)
 
-	#Finishing touch
-	info['schema'] = schema.values()
-	info['version'] = PI.Version()
+    #Finishing touch
+    info['schema'] = schema.values()
+    info['version'] = PI.Version()
 
-	return(info)
+    return (info)
 
 
 def post_data_to_web(data):
-	to_post = {}
-	to_post['data'] = json.dumps(data)
-	to_post['api_key'] = api_key
-	to_post['collected_at'] = calendar.timegm(time.gmtime())
-	to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
-	to_post['options'] = {}
-	to_post['options']['query_parameters'] = option['queryparameters']
-	to_post['options']['system_information'] = option['systeminformation']
+    to_post = {}
+    to_post['data'] = json.dumps(data)
+    to_post['api_key'] = api_key
+    to_post['collected_at'] = calendar.timegm(time.gmtime())
+    to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
+    to_post['options'] = {}
+    to_post['options']['query_parameters'] = option['queryparameters']
+    to_post['options']['system_information'] = option['systeminformation']
 
-	if option['dryrun']:
-		logger.info("Dumping data that would get posted")
+    if option['dryrun']:
+        logger.info("Dumping data that would get posted")
 
-		to_post['data'] = json.loads(to_post['data'])
-		for query in to_post['data']['queries']:
-			for plan in query['plans']:
-				if 'explain' in plan:
-					plan['explain'] = json.loads(plan['explain'])
-		if option['printjson']:
-			print(json.dumps(to_post))
-		else:
-			pprint(to_post)
+        to_post['data'] = json.loads(to_post['data'])
+        for query in to_post['data']['queries']:
+            for plan in query['plans']:
+                if 'explain' in plan:
+                    plan['explain'] = json.loads(plan['explain'])
+        if option['printjson']:
+            print(json.dumps(to_post))
+        else:
+            pprint(to_post)
 
-		logger.info("Exiting.")
-		sys.exit(0)
+        logger.info("Exiting.")
+        sys.exit(0)
 
-
-	try:
-		res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
-		return res.read(), res.getcode()
-	except Exception as e:
-		logger.error("Failed to post data to service: %s" % e)
-		sys.exit(1)
-
+    try:
+        res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
+        return res.read(), res.getcode()
+    except Exception as e:
+        logger.error("Failed to post data to service: %s" % e)
+        sys.exit(1)
 
 
 def write_config():
-
-	sample_config =  '''[pganalyze]
+    sample_config = '''[pganalyze]
 api_key: fill_me_in
 db_name: fill_me_in
 #db_username:
@@ -838,58 +827,58 @@ db_name: fill_me_in
 #psql_binary: /autodetected/from/$PATH
 '''
 
-	cf = option['configfile'][0]
+    cf = option['configfile'][0]
 
-	try:
-		f = os.open(cf, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0600)
-		os.write(f, sample_config)
-		os.close(f)
-	except Exception as e:
-		logger.error("Failed to write configfile: %s" % e)
-		sys.exit(1)
-	logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
+    try:
+        f = os.open(cf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0600)
+        os.write(f, sample_config)
+        os.close(f)
+    except Exception as e:
+        logger.error("Failed to write configfile: %s" % e)
+        sys.exit(1)
+    logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
 def main():
-	global option, logger
+    global option, logger
 
-	option = parse_options()
-	logger = configure_logger()
+    option = parse_options()
+    logger = configure_logger()
 
-	if option['generate_config']:
-		write_config()
-		sys.exit(0)
+    if option['generate_config']:
+        write_config()
+        sys.exit(0)
 
-	read_config()
+    read_config()
 
-	check_database()
+    check_database()
 
-	data = {}
-	data['queries'] = fetch_queries()
+    data = {}
+    data['queries'] = fetch_queries()
 
-	if option['systeminformation']:
-		data['system'] = fetch_system_information()
+    if option['systeminformation']:
+        data['system'] = fetch_system_information()
 
-	data['postgres'] = fetch_postgres_information()
+    data['postgres'] = fetch_postgres_information()
 
-	num_tries = 0
-	while True:
-		(output, code) = post_data_to_web(data)
-		num_tries = num_tries + 1
-		if code == 200 or num_tries >= 3:
-			break
-		logger.debug("Got code %s while posting data, sleeping 60 seconds then trying again" % code)
-		time.sleep(60)
+    num_tries = 0
+    while True:
+        (output, code) = post_data_to_web(data)
+        num_tries = num_tries + 1
+        if code == 200 or num_tries >= 3:
+            break
+        logger.debug("Got code %s while posting data, sleeping 60 seconds then trying again" % code)
+        time.sleep(60)
 
-	if code == 200:
-		if not option['quiet']:
-			logger.info("Submitted successfully")
+    if code == 200:
+        if not option['quiet']:
+            logger.info("Submitted successfully")
 
-		if not option['noreset']:
-			logger.debug("Resetting stats!")
-			db.run_query("SELECT pg_stat_plans_reset()")
-	else:
-		logger.error("Rejected by server: %s" % output)
+        if not option['noreset']:
+            logger.debug("Resetting stats!")
+            db.run_query("SELECT pg_stat_plans_reset()")
+    else:
+        logger.error("Rejected by server: %s" % output)
 
 
 if __name__ == '__main__': main()
