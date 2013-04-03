@@ -963,6 +963,7 @@ def main():
     data['postgres'] = fetch_postgres_information()
 
     num_tries = 0
+    code = 0
     while True:
         (output, code) = post_data_to_web(data)
         num_tries = num_tries + 1
