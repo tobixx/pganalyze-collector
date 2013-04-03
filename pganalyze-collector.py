@@ -337,7 +337,6 @@ class SystemInformation():
         # Correct all values to msec
         kernel_hz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
         os_counters = map(lambda x: int(x) * (1000 / kernel_hz), os_counters)
->>>>>>> master
 
         os_counter_names = ['user_msec', 'nice_msec', 'system_msec', 'idle_msec', 'iowait_msec',
                             'irq_msec', 'softirq_msec', 'steal_msec', 'guest_msec', 'guest_nice_msec']
