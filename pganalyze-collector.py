@@ -312,22 +312,23 @@ FROM (
     def Backends(self):
         pre92 = int(db.run_query('SHOW server_version_num')[0]['server_version_num']) < 90200
 
+        querycolumns = 'datname AS database, usename AS username, application_name, client_addr, client_hostname,' \
+                       'client_port, backend_start, xact_start, query_start, waiting'
+
+        pre92_columns = ", procpid AS pid, translate(current_query, chr(10) || chr(13), '  ') AS query"
+        post92_columns = ", pid, translate(query, chr(10) || chr(13), '  ') AS query, state"
+        querycolumns += pre92_columns if pre92 else post92_columns
+
         pidcol = 'procpid' if pre92 else 'pid'
 
-        query = "SELECT * FROM pg_stat_activity WHERE %s <> pg_backend_pid()" % (pidcol)
+        query = "SELECT %s FROM pg_stat_activity WHERE %s <> pg_backend_pid()" % (querycolumns, pidcol)
         result = db.run_query(query)
 
         for row in result:
 
-            # Unneeded columns
-            del(row['datid'])
-            del(row['usesysid'])
 
-            # Rewrite pre-9.2 columns
+            # Fake state column for pre-9.2 versions
             if pre92:
-                row['pid'] = row.pop('procpid')
-                row['query'] = row.pop('current_query')
-
                 if row['query'] == '<IDLE> in transaction':
                     row['state'] = 'idle in transaction'
                 elif row['query'] == '<IDLE>':
