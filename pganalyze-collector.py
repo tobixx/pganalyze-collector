@@ -291,7 +291,12 @@ FROM (
         return result
 
     def BGWriterStats(self):
-        return
+        query = "SELECT * FROM pg_stat_bgwriter"
+        return db.run_query(query)
+
+    def DBStats(self):
+        query = "SELECT * FROM pg_stat_database WHERE datname = current_database()"
+        return db.run_query(query)
 
     def Settings(self):
         query = "SELECT name, setting, boot_val, reset_val, source, sourcefile, sourceline FROM pg_settings"
@@ -848,9 +853,10 @@ def fetch_system_information():
 
 
 def fetch_postgres_information():
-    """Fetches information about the Postgres installation
+    """
+    Fetches information about the Postgres installation
 
-Returns a groomed version of all info ready for posting to the web
+    Returns a groomed version of all info ready for posting to the web
 """
     PI = PostgresInformation()
 
@@ -914,6 +920,8 @@ Returns a groomed version of all info ready for posting to the web
     info['schema'] = schema.values()
     info['version'] = PI.Version()
     info['settings'] = PI.Settings()
+    info['bgwriter'] = PI.BGWriterStats()
+    info['database'] = PI.DBStats()
 
     return info
 
