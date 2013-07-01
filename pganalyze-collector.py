@@ -309,6 +309,64 @@ FROM (
 
         return result
 
+    def Backends(self):
+        pre92 = int(db.run_query('SHOW server_version_num')[0]['server_version_num']) < 90200
+
+        pidcol = 'procpid' if pre92 else 'pid'
+
+        query = "SELECT * FROM pg_stat_activity WHERE %s <> pg_backend_pid()" % (pidcol)
+        result = db.run_query(query)
+
+        for row in result:
+
+            # Unneeded columns
+            del(row['datid'])
+            del(row['usesysid'])
+
+            # Rewrite pre-9.2 columns
+            if pre92:
+                row['pid'] = row.pop('procpid')
+                row['query'] = row.pop('current_query')
+
+                if row['query'] == '<IDLE> in transaction':
+                    row['state'] = 'idle in transaction'
+                elif row['query'] == '<IDLE>':
+                    row['state'] = 'idle'
+                else:
+                    row['state'] = 'active'
+
+            # Drop query and client information if query parameter collection is disabled
+            if not option['queryparameters']:
+                del(row['client_addr'])
+                del(row['client_hostname'])
+                del(row['client_port'])
+                del(row['query'])
+
+
+    def Locks(self):
+        query = """
+SELECT d.datname AS database,
+       n.nspname AS schema,
+       c.relname AS relation,
+       l.locktype,
+       l.page,
+       l.tuple,
+       l.virtualxid,
+       l.transactionid,
+       l.virtualtransaction,
+       l.pid,
+       l.mode,
+       l.granted
+FROM pg_locks l
+LEFT JOIN pg_catalog.pg_class c ON l.relation = c.oid
+LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_catalog.pg_database d ON d.oid = l.database
+WHERE l.pid <> pg_backend_pid();
+"""
+
+        return db.run_query(query)
+
+
 
 class SystemInformation():
     def __init__(self):
@@ -876,6 +934,7 @@ def fetch_postgres_information():
         tablekey = '.'.join([row.pop('schema'), row.pop('table')])
         tablestats[tablekey] = row
 
+    # Merge Table & Index bloat information into table/indexstats dicts
     for row in PI.Bloat():
         tablekey = '.'.join([row.get('schemaname'), row.pop('tablename')])
         indexkey = '.'.join([row.pop('schemaname'), row.pop('iname')])
@@ -884,7 +943,7 @@ def fetch_postgres_information():
         if indexkey in indexstats:
             indexstats[indexkey]['wasted_bytes'] = row['wastedibytes']
 
-    #Prepare schema dict
+    # Combine Table, Index and Constraint information into a combined schema dict
     for row in PI.Columns():
         tablekey = '.'.join([row['schema'], row['table']])
         if not tablekey in schema:
@@ -916,12 +975,15 @@ def fetch_postgres_information():
             schema[tablekey]['constraints'] = []
         schema[tablekey]['constraints'].append(row)
 
-    #Finishing touch
-    info['schema'] = schema.values()
-    info['version'] = PI.Version()
+
+    # Populate result dictionary
+    info['schema']   = schema.values()
+    info['version']  = PI.Version()
     info['settings'] = PI.Settings()
     info['bgwriter'] = PI.BGWriterStats()
     info['database'] = PI.DBStats()
+    info['locks']    = PI.Locks()
+    info['backends'] = PI.Backends()
 
     return info
 
