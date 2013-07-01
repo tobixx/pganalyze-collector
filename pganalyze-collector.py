@@ -342,6 +342,8 @@ FROM (
                 del(row['client_port'])
                 del(row['query'])
 
+        return result
+
 
     def Locks(self):
         query = """
