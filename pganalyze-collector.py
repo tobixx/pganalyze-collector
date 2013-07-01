@@ -133,6 +133,11 @@ ORDER BY n.nspname,
 
 
     def Constraints(self):
+        """
+
+
+        :return:
+        """
         query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
@@ -158,14 +163,16 @@ ORDER BY n.nspname,
 """
         #FIXME: This probably misses check constraints and others?
         result = db.run_query(query)
+
+        # Convert postgres arrays to python lists of integers
         for row in result:
             row['foreign_columns'] = map(int, row['foreign_columns'].strip('{}').split(','))
             row['columns'] = map(int, row['columns'].strip('{}').split(','))
-        return (result)
+        return result
 
     def Triggers(self):
 
-        #FIXME: Needs to be hooked up
+        #FIXME: Needs to be implemented
         query = """
 SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
         FROM pg_catalog.pg_trigger t
@@ -174,7 +181,6 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
 """
 
     def Version(self):
-        query = "SELECT VERSION()"
         return db.run_query("SELECT VERSION()")[0]['version']
 
     def TableStats(self):
@@ -284,8 +290,19 @@ FROM (
         result = db.run_query(query)
         return result
 
-def BGWriterStats(self):
+    def BGWriterStats(self):
         return
+
+    def Settings(self):
+        query = "SELECT name, setting, boot_val, reset_val, source, sourcefile, sourceline FROM pg_settings"
+        result = db.run_query(query)
+
+        for row in result:
+            row['current_value'] = row.pop('setting')
+            row['boot_value'] = row.pop('boot_val')
+            row['reset_value'] = row.pop('reset_val')
+
+        return result
 
 
 class SystemInformation():
@@ -555,10 +572,27 @@ class PSQL():
         return find_executable_in_path('psql')
 
     def _magic_cast(self, values):
+        """
+        Takes a list of strings and tries to convert them to their native python representation
+
+        Handles:
+            * Integers
+            * Floats
+            * t/f -> True/False
+
+        Everything else gets appended unmodified
+
+        """
         nicevalues = []
         for value in values:
             try:
                 nicevalues.append(int(value))
+                continue
+            except Exception as e:
+                pass
+
+            try:
+                nicevalues.append(float(value))
                 continue
             except Exception as e:
                 pass
@@ -879,8 +913,9 @@ Returns a groomed version of all info ready for posting to the web
     #Finishing touch
     info['schema'] = schema.values()
     info['version'] = PI.Version()
+    info['settings'] = PI.Settings()
 
-    return (info)
+    return info
 
 
 def post_data_to_web(data):
