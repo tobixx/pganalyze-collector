@@ -42,8 +42,6 @@ import platform
 from pprint import pprint
 
 
-API_URL = 'https://pganalyze.com/queries'
-
 MYNAME = 'pganalyze-collector'
 VERSION = '0.3.1-dev'
 
@@ -811,22 +809,46 @@ def read_config():
         logger.debug("%s => %s" % (k, v))
 
     # FIXME: Could do with a dict
-    global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
+    global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary, api_url
     db_username = configdump.get('db_username')
     db_password = configdump.get('db_password')
     db_host = configdump.get('db_host')
-    # Set db_host to localhost if not specified and db_password present to force IP connection
+    # Set db_host to localhost if not specified and db_password present to force non-unixsocket-connection
     if not db_host and db_password:
         db_host = 'localhost'
     db_port = configdump.get('db_port')
     db_name = configdump.get('db_name')
     api_key = configdump.get('api_key')
+    api_url = configdump.get('api_url', 'https://pganalyze.com/queries')
     psql_binary = configdump.get('psql_binary')
 
     if not db_name and api_key:
         logger.error(
             "Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
         sys.exit(1)
+
+def write_config():
+    sample_config = '''[pganalyze]
+api_key: fill_me_in
+db_name: fill_me_in
+#db_username:
+#db_password:
+#db_host: localhost
+#db_port: 5432
+#psql_binary: /autodetected/from/$PATH
+#api_url: https://pganalyze.com/queries
+'''
+
+    cf = option['configfile'][0]
+
+    try:
+        f = os.open(cf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0600)
+        os.write(f, sample_config)
+        os.close(f)
+    except Exception as e:
+        logger.error("Failed to write configfile: %s" % e)
+        sys.exit(1)
+    logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
 def fetch_queries():
@@ -1018,34 +1040,12 @@ def post_data_to_web(data):
         sys.exit(0)
 
     try:
-        res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
+        res = urllib.urlopen(api_url, urllib.urlencode(to_post))
         return res.read(), res.getcode()
     except Exception as e:
         logger.error("Failed to post data to service: %s" % e)
         sys.exit(1)
 
-
-def write_config():
-    sample_config = '''[pganalyze]
-api_key: fill_me_in
-db_name: fill_me_in
-#db_username:
-#db_password:
-#db_host: localhost
-#db_port: 5432
-#psql_binary: /autodetected/from/$PATH
-'''
-
-    cf = option['configfile'][0]
-
-    try:
-        f = os.open(cf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0600)
-        os.write(f, sample_config)
-        os.close(f)
-    except Exception as e:
-        logger.error("Failed to write configfile: %s" % e)
-        sys.exit(1)
-    logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
 def main():
