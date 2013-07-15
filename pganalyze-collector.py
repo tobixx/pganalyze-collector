@@ -621,7 +621,7 @@ class PSQL():
         resultset = []
         for line in lines:
             values = line.strip().split(colsep)
-            values = self._magic_cast(values)
+            #values = self._magic_cast(values)
             resultset.append(dict(zip(columns, values)))
 
         return resultset
