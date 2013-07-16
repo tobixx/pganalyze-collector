@@ -700,7 +700,7 @@ def check_database():
 
     try:
         if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", True)[0][
-            'foo'] == 1:
+            'foo'] == "1":
             logger.error("Extension pg_stat_plans isn't installed")
             sys.exit(1)
     except Exception as e:
