@@ -42,11 +42,9 @@ import platform
 from pprint import pprint
 
 
-API_URL = 'https://pganalyze.com/queries'
-
 MYNAME = 'pganalyze-collector'
 
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 
 
 class PostgresInformation():
@@ -134,6 +132,11 @@ ORDER BY n.nspname,
 
 
     def Constraints(self):
+        """
+
+
+        :return:
+        """
         query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
@@ -159,14 +162,16 @@ ORDER BY n.nspname,
 """
         #FIXME: This probably misses check constraints and others?
         result = db.run_query(query)
+
+        # Convert postgres arrays to python lists of integers
         for row in result:
             row['foreign_columns'] = map(int, row['foreign_columns'].strip('{}').split(','))
             row['columns'] = map(int, row['columns'].strip('{}').split(','))
-        return (result)
+        return result
 
     def Triggers(self):
 
-        #FIXME: Needs to be hooked up
+        #FIXME: Needs to be implemented
         query = """
 SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
         FROM pg_catalog.pg_trigger t
@@ -175,7 +180,6 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
 """
 
     def Version(self):
-        query = "SELECT VERSION()"
         return db.run_query("SELECT VERSION()")[0]['version']
 
     def TableStats(self):
@@ -285,8 +289,85 @@ FROM (
         result = db.run_query(query)
         return result
 
-def BGWriterStats(self):
-        return
+    def BGWriterStats(self):
+        query = "SELECT * FROM pg_stat_bgwriter"
+        return db.run_query(query)
+
+    def DBStats(self):
+        query = "SELECT * FROM pg_stat_database WHERE datname = current_database()"
+        return db.run_query(query)
+
+    def Settings(self):
+        query = "SELECT name, setting, boot_val, reset_val, source, sourcefile, sourceline FROM pg_settings"
+        result = db.run_query(query)
+
+        for row in result:
+            row['current_value'] = row.pop('setting')
+            row['boot_value'] = row.pop('boot_val')
+            row['reset_value'] = row.pop('reset_val')
+
+        return result
+
+    def Backends(self):
+        pre92 = int(db.run_query('SHOW server_version_num')[0]['server_version_num']) < 90200
+
+        querycolumns = 'datname AS database, usename AS username, application_name, client_addr, client_hostname,' \
+                       'client_port, backend_start, xact_start, query_start, waiting'
+
+        pre92_columns = ", procpid AS pid, translate(current_query, chr(10) || chr(13), '  ') AS query"
+        post92_columns = ", pid, translate(query, chr(10) || chr(13), '  ') AS query, state"
+        querycolumns += pre92_columns if pre92 else post92_columns
+
+        pidcol = 'procpid' if pre92 else 'pid'
+
+        query = "SELECT %s FROM pg_stat_activity WHERE %s <> pg_backend_pid()" % (querycolumns, pidcol)
+        result = db.run_query(query)
+
+        for row in result:
+
+
+            # Fake state column for pre-9.2 versions
+            if pre92:
+                if row['query'] == '<IDLE> in transaction':
+                    row['state'] = 'idle in transaction'
+                elif row['query'] == '<IDLE>':
+                    row['state'] = 'idle'
+                else:
+                    row['state'] = 'active'
+
+            # Drop query and client information if query parameter collection is disabled
+            if not option['queryparameters']:
+                del(row['client_addr'])
+                del(row['client_hostname'])
+                del(row['client_port'])
+                del(row['query'])
+
+        return result
+
+
+    def Locks(self):
+        query = """
+SELECT d.datname AS database,
+       n.nspname AS schema,
+       c.relname AS relation,
+       l.locktype,
+       l.page,
+       l.tuple,
+       l.virtualxid,
+       l.transactionid,
+       l.virtualtransaction,
+       l.pid,
+       l.mode,
+       l.granted
+FROM pg_locks l
+LEFT JOIN pg_catalog.pg_class c ON l.relation = c.oid
+LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_catalog.pg_database d ON d.oid = l.database
+WHERE l.pid <> pg_backend_pid();
+"""
+
+        return db.run_query(query)
+
 
 
 class SystemInformation():
@@ -541,7 +622,6 @@ class PSQL():
         resultset = []
         for line in lines:
             values = line.strip().split(colsep)
-            values = self._magic_cast(values)
             resultset.append(dict(zip(columns, values)))
 
         return resultset
@@ -554,26 +634,6 @@ class PSQL():
     def _find_psql(self):
         logger.debug("Searching for PSQL binary")
         return find_executable_in_path('psql')
-
-    def _magic_cast(self, values):
-        nicevalues = []
-        for value in values:
-            try:
-                nicevalues.append(int(value))
-                continue
-            except Exception as e:
-                pass
-
-            if value == 't':
-                nicevalues.append(True)
-                continue
-
-            if value == 'f':
-                nicevalues.append(False)
-                continue
-
-            nicevalues.append(value)
-        return (nicevalues)
 
 
 def find_executable_in_path(cmd):
@@ -603,7 +663,7 @@ def check_database():
 
     try:
         if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", True)[0][
-            'foo'] == 1:
+            'foo'] == "1":
             logger.error("Extension pg_stat_plans isn't installed")
             sys.exit(1)
     except Exception as e:
@@ -712,22 +772,46 @@ def read_config():
         logger.debug("%s => %s" % (k, v))
 
     # FIXME: Could do with a dict
-    global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary
+    global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary, api_url
     db_username = configdump.get('db_username')
     db_password = configdump.get('db_password')
     db_host = configdump.get('db_host')
-    # Set db_host to localhost if not specified and db_password present to force IP connection
+    # Set db_host to localhost if not specified and db_password present to force non-unixsocket-connection
     if not db_host and db_password:
         db_host = 'localhost'
     db_port = configdump.get('db_port')
     db_name = configdump.get('db_name')
     api_key = configdump.get('api_key')
+    api_url = configdump.get('api_url', 'https://pganalyze.com/queries')
     psql_binary = configdump.get('psql_binary')
 
     if not db_name and api_key:
         logger.error(
             "Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
         sys.exit(1)
+
+def write_config():
+    sample_config = '''[pganalyze]
+api_key: fill_me_in
+db_name: fill_me_in
+#db_username:
+#db_password:
+#db_host: localhost
+#db_port: 5432
+#psql_binary: /autodetected/from/$PATH
+#api_url: https://pganalyze.com/queries
+'''
+
+    cf = option['configfile'][0]
+
+    try:
+        f = os.open(cf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0600)
+        os.write(f, sample_config)
+        os.close(f)
+    except Exception as e:
+        logger.error("Failed to write configfile: %s" % e)
+        sys.exit(1)
+    logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
 def fetch_queries():
@@ -815,9 +899,10 @@ def fetch_system_information():
 
 
 def fetch_postgres_information():
-    """Fetches information about the Postgres installation
+    """
+    Fetches information about the Postgres installation
 
-Returns a groomed version of all info ready for posting to the web
+    Returns a groomed version of all info ready for posting to the web
 """
     PI = PostgresInformation()
 
@@ -837,6 +922,7 @@ Returns a groomed version of all info ready for posting to the web
         tablekey = '.'.join([row.pop('schema'), row.pop('table')])
         tablestats[tablekey] = row
 
+    # Merge Table & Index bloat information into table/indexstats dicts
     for row in PI.Bloat():
         tablekey = '.'.join([row.get('schemaname'), row.pop('tablename')])
         indexkey = '.'.join([row.pop('schemaname'), row.pop('iname')])
@@ -845,7 +931,7 @@ Returns a groomed version of all info ready for posting to the web
         if indexkey in indexstats:
             indexstats[indexkey]['wasted_bytes'] = row['wastedibytes']
 
-    #Prepare schema dict
+    # Combine Table, Index and Constraint information into a combined schema dict
     for row in PI.Columns():
         tablekey = '.'.join([row['schema'], row['table']])
         if not tablekey in schema:
@@ -877,11 +963,17 @@ Returns a groomed version of all info ready for posting to the web
             schema[tablekey]['constraints'] = []
         schema[tablekey]['constraints'].append(row)
 
-    #Finishing touch
-    info['schema'] = schema.values()
-    info['version'] = PI.Version()
 
-    return (info)
+    # Populate result dictionary
+    info['schema']   = schema.values()
+    info['version']  = PI.Version()
+    info['settings'] = PI.Settings()
+    info['bgwriter'] = PI.BGWriterStats()
+    info['database'] = PI.DBStats()
+    info['locks']    = PI.Locks()
+    info['backends'] = PI.Backends()
+
+    return info
 
 
 def post_data_to_web(data):
@@ -911,34 +1003,12 @@ def post_data_to_web(data):
         sys.exit(0)
 
     try:
-        res = urllib.urlopen(API_URL, urllib.urlencode(to_post))
+        res = urllib.urlopen(api_url, urllib.urlencode(to_post))
         return res.read(), res.getcode()
     except Exception as e:
         logger.error("Failed to post data to service: %s" % e)
         sys.exit(1)
 
-
-def write_config():
-    sample_config = '''[pganalyze]
-api_key: fill_me_in
-db_name: fill_me_in
-#db_username:
-#db_password:
-#db_host: localhost
-#db_port: 5432
-#psql_binary: /autodetected/from/$PATH
-'''
-
-    cf = option['configfile'][0]
-
-    try:
-        f = os.open(cf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0600)
-        os.write(f, sample_config)
-        os.close(f)
-    except Exception as e:
-        logger.error("Failed to write configfile: %s" % e)
-        sys.exit(1)
-    logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
 def main():
