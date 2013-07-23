@@ -43,7 +43,7 @@ from pprint import pprint
 
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.3.1-dev'
+VERSION = '0.3.1'
 
 
 class PostgresInformation():
