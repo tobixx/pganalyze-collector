@@ -621,7 +621,6 @@ class PSQL():
         resultset = []
         for line in lines:
             values = line.strip().split(colsep)
-            #values = self._magic_cast(values)
             resultset.append(dict(zip(columns, values)))
 
         return resultset
@@ -634,43 +633,6 @@ class PSQL():
     def _find_psql(self):
         logger.debug("Searching for PSQL binary")
         return find_executable_in_path('psql')
-
-    def _magic_cast(self, values):
-        """
-        Takes a list of strings and tries to convert them to their native python representation
-
-        Handles:
-            * Integers
-            * Floats
-            * t/f -> True/False
-
-        Everything else gets appended unmodified
-
-        """
-        nicevalues = []
-        for value in values:
-            try:
-                nicevalues.append(int(value))
-                continue
-            except Exception as e:
-                pass
-
-            try:
-                nicevalues.append(float(value))
-                continue
-            except Exception as e:
-                pass
-
-            if value == 't':
-                nicevalues.append(True)
-                continue
-
-            if value == 'f':
-                nicevalues.append(False)
-                continue
-
-            nicevalues.append(value)
-        return (nicevalues)
 
 
 def find_executable_in_path(cmd):
