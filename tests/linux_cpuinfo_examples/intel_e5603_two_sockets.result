@@ -1,0 +1,7 @@
+{
+	"model": "Intel(R) Xeon(R) CPU E5603 @ 1.60GHz",
+	"cache_size": "4096 KB",
+	"speed_mhz": 1600.14,
+	"sockets": 2,
+	"cores_per_socket": 4
+}

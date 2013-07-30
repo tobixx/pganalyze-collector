@@ -1,0 +1,7 @@
+{
+	"model": "QEMU Virtual CPU version 0.12.5",
+	"cache_size": "4096 KB",
+	"speed_mhz": 2660.31,
+	"sockets": 1,
+	"cores_per_socket": 2
+}
