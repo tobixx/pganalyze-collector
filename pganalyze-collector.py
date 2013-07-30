@@ -403,10 +403,32 @@ class SystemInformation():
 
     def CPU(self):
         result = {}
-        if self.system != 'Linux': return None
+
+        if self.system == 'Linux':
+            (procstat, cpuinfo) = self._fetch_linux_cpu_data()
+
+            result['busy_times'] = self._parse_linux_cpu_procstat(procstat)
+            result['hardware'] = self._parse_linux_cpu_cpuinfo(cpuinfo)
+
+        else:
+            return None
+
+        return (result)
+
+
+    def _fetch_linux_cpu_data(self):
 
         with open('/proc/stat', 'r') as f:
             procstat = f.readlines()
+
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.readlines()
+
+        return procstat, cpuinfo
+
+
+
+    def _parse_linux_cpu_procstat(self, procstat):
 
         # Fetch combined CPU counter from lines
         os_counters = filter(lambda x: x.find('cpu ') == 0, procstat)[0]
@@ -421,10 +443,10 @@ class SystemInformation():
         os_counter_names = ['user_msec', 'nice_msec', 'system_msec', 'idle_msec', 'iowait_msec',
                             'irq_msec', 'softirq_msec', 'steal_msec', 'guest_msec', 'guest_nice_msec']
 
-        result['busy_times'] = dict(zip(os_counter_names, os_counters))
+        return dict(zip(os_counter_names, os_counters))
 
-        with open('/proc/cpuinfo', 'r') as f:
-            cpuinfo = f.readlines()
+
+    def _parse_linux_cpu_cpuinfo(self, cpuinfo):
 
         # Trim excessive whitespace in strings, return two elements per line
         cpuinfo = map(lambda x: " ".join(x.split()).split(' : '), cpuinfo)
@@ -433,12 +455,28 @@ class SystemInformation():
         hardware['model'] = next(l[1] for l in cpuinfo if l[0] == 'model name')
         hardware['cache_size'] = next(l[1] for l in cpuinfo if l[0] == 'cache size')
         hardware['speed_mhz'] = next(round(float(l[1]), 2) for l in cpuinfo if l[0] == 'cpu MHz')
-        hardware['sockets'] = int(max([l[1] for l in cpuinfo if l[0] == 'physical id'])) + 1
-        hardware['cores_per_socket'] = next(int(l[1]) for l in cpuinfo if l[0] == 'cpu cores')
 
-        result['hardware'] = hardware
+        try:
+            hardware['sockets'] = int(max([l[1] for l in cpuinfo if l[0] == 'physical id'])) + 1
+        except ValueError:
+            # Fallthrough - we didn't find any physical id stanza, assuming one socket
+            hardware['sockets'] = 1
 
-        return (result)
+        try:
+            hardware['cores_per_socket'] = next(int(l[1]) for l in cpuinfo if l[0] == 'cpu cores')
+        except StopIteration:
+            # Fallthrough - we didn't find cpu cores stanza
+           pass
+
+        # We didn't get cpu core identifiers, just use the count of processors
+        if not 'cores_per_socket' in hardware:
+            try:
+                 hardware['cores_per_socket'] = int(max([l[1] for l in cpuinfo if l[0] == 'processor'])) + 1
+            except ValueError:
+                # All bets are off
+                hardware['cores_per_socket'] = 1
+
+        return hardware
 
 
     def Scheduler(self):
