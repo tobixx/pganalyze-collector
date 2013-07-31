@@ -1036,12 +1036,23 @@ def post_data_to_web(data):
         logger.info("Exiting.")
         sys.exit(0)
 
-    try:
-        res = urllib.urlopen(api_url, urllib.urlencode(to_post))
-        return res.read(), res.getcode()
-    except Exception as e:
-        logger.error("Failed to post data to service: %s" % e)
-        sys.exit(1)
+    num_tries = 0
+    while True:
+        try:
+            res = urllib.urlopen(api_url, urllib.urlencode(to_post))
+            message = res.read()
+            code = res.getcode()
+        except IOError as e:
+            message = str(e)
+            code = 'exception'
+
+        num_tries += 1
+        if code == 200 or num_tries >= 3:
+            return message,code
+        logger.debug("Got %s while posting data: %s, sleeping 60 seconds then trying again" % (code, message))
+        time.sleep(60)
+
+
 
 
 
@@ -1067,16 +1078,7 @@ def main():
 
     data['postgres'] = fetch_postgres_information()
 
-    num_tries = 0
-    code = 0
-    while True:
-        (output, code) = post_data_to_web(data)
-        num_tries = num_tries + 1
-        if code == 200 or num_tries >= 3:
-            break
-        logger.debug("Got code %s while posting data, sleeping 60 seconds then trying again" % code)
-        time.sleep(60)
-
+    (output, code) = post_data_to_web(data)
     if code == 200:
         if not option['quiet']:
             logger.info("Submitted successfully")
