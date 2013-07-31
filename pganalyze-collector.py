@@ -297,7 +297,7 @@ FROM (
         return db.run_query(query)
 
     def Settings(self):
-        query = "SELECT name, setting, boot_val, reset_val, source, sourcefile, sourceline FROM pg_settings"
+        query = "SELECT name, setting, unit, boot_val, reset_val, source, sourcefile, sourceline FROM pg_settings"
         result = db.run_query(query)
 
         for row in result:
