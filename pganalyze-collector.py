@@ -72,7 +72,6 @@ WHERE c.relkind = 'r'
   AND n.nspname <> 'pg_catalog'
   AND n.nspname <> 'information_schema'
   AND n.nspname !~ '^pg_toast'
-  AND pg_catalog.pg_table_is_visible(c.oid)
   AND a.attnum > 0
   AND NOT a.attisdropped
 ORDER BY n.nspname,
@@ -111,7 +110,6 @@ WHERE c.relkind = 'r'
   AND n.nspname <> 'pg_catalog'
   AND n.nspname <> 'information_schema'
   AND n.nspname !~ '^pg_toast'
-  AND pg_catalog.pg_table_is_visible(c.oid)
   AND c.oid = i.indrelid
   AND i.indexrelid = c2.oid
   AND n.oid = c.relnamespace
@@ -154,7 +152,6 @@ WHERE r.contype = 'f'
   AND n.nspname <> 'pg_catalog'
   AND n.nspname <> 'information_schema'
   AND n.nspname !~ '^pg_toast'
-  AND pg_catalog.pg_table_is_visible(c.oid)
 ORDER BY n.nspname,
          c.relname,
          name;
