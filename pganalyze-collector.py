@@ -591,6 +591,8 @@ class PSQL():
     def __init__(self, dbname, username=None, password=None, psql=None, host=None, port=None):
         self.psql = psql or self._find_psql()
 
+        self.querymarker = '/* ' + MYNAME + ' */'
+
         if not self.psql:
             raise Exception('Please specify path to psql binary')
 
@@ -614,6 +616,8 @@ class PSQL():
 
     def run_query(self, query, should_raise=False, ignore_noncrit=False):
 
+        # Prepending querymarker to be able to filter own queries during subsequent runs
+        query = self.querymarker + query
         logger.debug("Running query: %s" % query)
 
         colsep = unichr(0x2764)
@@ -861,23 +865,33 @@ def fetch_queries():
     plan_fields = ["planid", "had_our_search_path", "from_our_database",
                    "query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
+    # If we keep \r\n in our query string this will break our psql wrapper, replace with whitespace
     query = "SELECT translate(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
     query += ", translate(p.query, chr(10) || chr(13), '  ') AS p_query"
+
+    # Generate list of fields we'e interested in
     query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
     query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
+
     query += " FROM pg_stat_plans p"
     query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.planids)"
+
     # EXPLAIN, COPY and SET commands cannot be explained
-    query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)'"
+    query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)\\y'"
+
     # Plans in pg_catalog cannot be explained
-    query += " AND p.query !~* '\\spg_catalog\\.'"
+    query += " AND p.query !~* '\\ypg_catalog\\.'"
+
     # We don't want our stuff in the statistics
-    query += " AND p.query !~* '\\spg_stat_plans\\s'"
+    query += " AND p.query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', db.querymarker)
+
     # Remove all plans which we can't explain
     query += " AND p.from_our_database = TRUE"
     query += " AND p.planid = ANY (pq.planids);"
 
     fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
+
+    # If we keep \r\n in our query string this will break our psql wrapper, replace with whitespace
     fetch_plan += "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
 
     queries = {}
