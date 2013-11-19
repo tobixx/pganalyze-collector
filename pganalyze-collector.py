@@ -31,7 +31,8 @@
 
 
 import os, sys, subprocess
-import time, calendar
+import time, calendar, datetime
+import psycopg2
 import re, json
 import urllib
 import logging
@@ -442,7 +443,6 @@ class SystemInformation():
 
         return dict(zip(os_counter_names, os_counters))
 
-
     def _parse_linux_cpu_cpuinfo(self, cpuinfo):
 
         # Trim excessive whitespace in strings, return two elements per line
@@ -475,7 +475,6 @@ class SystemInformation():
 
         return hardware
 
-
     def Scheduler(self):
         result = {}
         if self.system != 'Linux': return None
@@ -501,7 +500,6 @@ class SystemInformation():
         result['loadavg_15min'] = loadavg[2]
 
         return (result)
-
 
     def Storage(self):
         result = {}
@@ -587,91 +585,53 @@ class SystemInformation():
         return path
 
 
-class PSQL():
-    def __init__(self, dbname, username=None, password=None, psql=None, host=None, port=None):
-        self.psql = psql or self._find_psql()
+class DB():
+    querymarker = '/* ' + MYNAME + ' */'
 
-        self.querymarker = '/* ' + MYNAME + ' */'
+    def __init__(self, dbname, username=None, password=None, host=None, port=None):
+        self.conn = self._connect(dbname, username, password, host, port)
 
-        if not self.psql:
-            raise Exception('Please specify path to psql binary')
+        # Convert decimal values to float during read to make JSON encoding easier
+        dec2float = psycopg2.extensions.new_type(
+            psycopg2.extensions.DECIMAL.values,
+            'DEC2FLOAT',
+            lambda value, curs: float(value) if value is not None else None)
+        psycopg2.extensions.register_type(dec2float)
 
-        logger.debug("Using %s as psql binary" % self.psql)
 
-        # Setting up environment for psql
-        logger.debug("Setting PGDATABASE to %s" % dbname)
-        os.environ['PGDATABASE'] = dbname
-        if username:
-            os.environ['PGUSER'] = username
-            logger.debug("Setting PGUSER to %s" % username)
-        if password:
-            os.environ['PGPASSWORD'] = password
-            logger.debug("Setting PGPASSWORD")
-        if host:
-            os.environ['PGHOST'] = host
-            logger.debug("Setting PGHOST to %s" % host)
-        if port:
-            os.environ['PGPORT'] = port
-            logger.debug("Setting PGPORT to %s" % port)
-
-    def run_query(self, query, should_raise=False, ignore_noncrit=False):
+    def run_query(self, query, should_raise=False):
+        logger.debug("Running query: %s" % query)
 
         # Prepending querymarker to be able to filter own queries during subsequent runs
         query = self.querymarker + query
-        logger.debug("Running query: %s" % query)
 
-        colsep = unichr(0x2764)
+        cur = self.conn.cursor()
 
-        cmd = [self.psql, "-F" + colsep.encode('utf-8'), '--no-align', '--no-password', '--no-psqlrc']
-        lines = []
-
-        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        (stdout, stderr) = p.communicate(query)
-
-
-        # Fail on all invocations where exitstatus is non-zero
-        # When exitstatus is zero, we might have only encountered notices or warnings which might be expected.
-        if p.returncode != 0 or (stderr and ignore_noncrit == False):
+        try:
+            cur.execute(query)
+        except Exception as e:
             if should_raise:
-                raise Exception(stderr)
-            logger.error("Got an error during query execution, exitstatus: %s:" % p.returncode)
-            for line in stderr.splitlines():
+                raise e
+            logger.error("Got an error during query execution")
+            for line in str(e).splitlines():
                 logger.error(line)
             sys.exit(1)
 
-        # If we've got anything left in stderr it's probably warning/notices. Dump them to debug
-        if stderr:
-            logger.debug("Encountered warnings/notices:")
-            for line in stderr.splitlines():
-                logger.debug(line)
-
-        stdout = stdout.decode('utf-8')
-        lines = stdout.splitlines()
-
-        # Drop number of rows
-        lines.pop()
-        # FIXME: Skip first row if it's from a SET statement
-        if lines[0] == 'SET':
-            lines.pop(0)
         # Fetch column headers
-        columns = lines.pop(0).strip().split(colsep)
+        columns = [f[0] for f in cur.description]
 
-        resultset = []
-        for line in lines:
-            values = line.strip().split(colsep)
-            resultset.append(dict(zip(columns, values)))
+        # Build list of hashes
+        resultset = [dict(zip(columns, row)) for row in cur.fetchall()]
 
+        pprint(resultset)
         return resultset
 
-    def ping(self):
-        logger.debug("Pinging database")
-        self.run_query('SELECT 1')
-        return True
-
-    def _find_psql(self):
-        logger.debug("Searching for PSQL binary")
-        return find_executable_in_path('psql')
+    def _connect(self, dbname, username, password, host, port):
+        try:
+            return psycopg2.connect(database=dbname, user=username, password=password, host=host, port=port)
+        except Exception as e:
+            logger.error("Failed to connect to database: %s", str(e))
+            sys.exit(1)
 
 
 def find_executable_in_path(cmd):
@@ -685,23 +645,19 @@ def find_executable_in_path(cmd):
 
 def check_database():
     global db
-    db = PSQL(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
-
-    if not db.ping():
-        logger.error("Can't run query against the database")
-        sys.exit(1)
+    db = DB(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
 
     if not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
         logger.error("User %s isn't a superuser" % db_username)
         sys.exit(1)
 
-    if not int(db.run_query('SHOW server_version_num')[0]['server_version_num']) >= 90100:
+    if not db.run_query('SHOW server_version_num')[0]['server_version_num'] >= 90100:
         logger.error("You must be running PostgreSQL 9.1 or newer")
         sys.exit(1)
 
     try:
-        if not db.run_query("SELECT COUNT(*) as foo FROM pg_extension WHERE extname='pg_stat_plans'", True)[0][
-            'foo'] == "1":
+        query = "SELECT COUNT(*) AS count FROM pg_extension WHERE extname='pg_stat_plans'"
+        if not db.run_query(query, True)[0]['count'] == 1:
             logger.error("Extension pg_stat_plans isn't installed")
             sys.exit(1)
     except Exception as e:
@@ -722,9 +678,7 @@ def parse_options(print_help=False):
     parser.add_option('--cron', '-q', action='store_true', dest='quiet',
                       help='Suppress all non-warning output during normal operation')
     parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
-                      help='Print data that would get sent to web service and exit afterwards.')
-    parser.add_option('--print-json', action='store_true', dest='printjson',
-                      help='Print a json string instead of pretty-printed Python structures. Requires --dry-run.')
+                      help='Print JSON data that would get sent to web service and exit afterwards.')
     parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
                       help='Don\'t reset statistics after posting to web. Only use for testing purposes.')
     parser.add_option('--no-query-parameters', action='store_false', dest='queryparameters',
@@ -764,6 +718,7 @@ def configure_logger():
 
 def read_config():
     logger.debug("Reading config")
+
 
     configfile = None
     for file in option['configfile']:
@@ -821,7 +776,6 @@ def read_config():
     db_name = configdump.get('db_name')
     api_key = configdump.get('api_key')
     api_url = configdump.get('api_url', 'https://pganalyze.com/queries')
-    psql_binary = configdump.get('psql_binary')
 
     if not db_name and api_key:
         logger.error(
@@ -836,7 +790,6 @@ db_name: fill_me_in
 #db_password:
 #db_host: localhost
 #db_port: 5432
-#psql_binary: /autodetected/from/$PATH
 #api_url: https://pganalyze.com/queries
 '''
 
@@ -897,7 +850,7 @@ def fetch_queries():
     queries = {}
 
     # Fetch joined list of all queries and plans
-    for row in db.run_query(query, False, True):
+    for row in db.run_query(query, False):
 
         # merge pg_stat_plans_queries values into result
         query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
@@ -923,9 +876,11 @@ def fetch_queries():
         # try explaining the query if pg_stat_plans thinks it's possible
         if plan['query_explainable']:
             try:
-                result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True, False)
+                result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True)
                 plan['explain'] = result[0]['explain']
             except Exception as e:
+                logger.error("Got an query error: %s" % str(e))
+                sys.exit(1)
                 plan['explain_error'] = str(e)
 
         queries[normalized_query]['plans'].append(plan)
@@ -1024,9 +979,18 @@ def fetch_postgres_information():
     return info
 
 
+class pgaEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            return(str(obj))
+
+        return json.JSONEncoder.default(self, obj)
+
+
 def post_data_to_web(data):
     to_post = {}
-    to_post['data'] = json.dumps(data)
+    to_post['data'] = json.dumps(data, cls=pgaEncoder)
     to_post['api_key'] = api_key
     to_post['collected_at'] = calendar.timegm(time.gmtime())
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
@@ -1042,10 +1006,7 @@ def post_data_to_web(data):
             for plan in query['plans']:
                 if 'explain' in plan:
                     plan['explain'] = json.loads(plan['explain'])
-        if option['printjson']:
-            print(json.dumps(to_post))
-        else:
-            pprint(to_post)
+        print(json.dumps(to_post, sort_keys=True, indent=4, separators=(',', ': '), cls=pgaEncoder))
 
         logger.info("Exiting.")
         sys.exit(0)
@@ -1065,10 +1026,6 @@ def post_data_to_web(data):
             return message,code
         logger.debug("Got %s while posting data: %s, sleeping 60 seconds then trying again" % (code, message))
         time.sleep(60)
-
-
-
-
 
 def main():
     global option, logger
