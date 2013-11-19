@@ -32,7 +32,6 @@
 
 import os, sys, subprocess
 import time, calendar, datetime
-import psycopg2
 import re, json
 import urllib
 import logging
@@ -41,6 +40,13 @@ from optparse import OptionParser
 from stat import *
 import platform
 from pprint import pprint
+
+try:
+    import psycopg2
+except Exception as e:
+    print("*** Failed to load psycopg2: %s" % str(e))
+    print("*** Please install the python-psycopg2 package")
+    sys.exit(1)
 
 
 MYNAME = 'pganalyze-collector'
@@ -589,6 +595,7 @@ class DB():
     querymarker = '/* ' + MYNAME + ' */'
 
     def __init__(self, dbname, username=None, password=None, host=None, port=None):
+
         self.conn = self._connect(dbname, username, password, host, port)
 
         # Convert decimal values to float during read to make JSON encoding easier
@@ -879,8 +886,6 @@ def fetch_queries():
                 result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True)
                 plan['explain'] = result[0]['explain']
             except Exception as e:
-                logger.error("Got an query error: %s" % str(e))
-                sys.exit(1)
                 plan['explain_error'] = str(e)
 
         queries[normalized_query]['plans'].append(plan)
