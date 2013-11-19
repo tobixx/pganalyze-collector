@@ -630,7 +630,6 @@ class DB():
         # Build list of hashes
         resultset = [dict(zip(columns, row)) for row in cur.fetchall()]
 
-        pprint(resultset)
         return resultset
 
     def _connect(self, dbname, username, password, host, port):
