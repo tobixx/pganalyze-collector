@@ -818,8 +818,7 @@ def fetch_queries():
                    "local_blks_hit", "local_blks_written",
                    "temp_blks_read", "temp_blks_written"]
 
-    query_fields = ["planids", "calls_per_plan", "avg_time_per_plan",
-                    "time_variance", "time_stddev"] + both_fields
+    query_fields = ["time_variance", "time_stddev"] + both_fields
 
     plan_fields = ["planid", "had_our_search_path", "from_our_database",
                    "query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
