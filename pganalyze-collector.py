@@ -50,7 +50,7 @@ except Exception as e:
 
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.3.3-dev'
+VERSION = '0.4.0-dev'
 
 
 class PostgresInformation():
@@ -371,6 +371,90 @@ WHERE l.pid <> pg_backend_pid();
 
         return db.run_query(query)
 
+
+class PgStatPlans():
+
+    def __init__(self):
+        pass
+
+    def fetch_queries(self):
+        both_fields = ["userid", "dbid",
+                       "calls", "rows", "total_time",
+                       "shared_blks_hit", "shared_blks_read", "shared_blks_written",
+                       "local_blks_hit", "local_blks_written",
+                       "temp_blks_read", "temp_blks_written"]
+
+        query_fields = ["time_variance", "time_stddev"] + both_fields
+
+        plan_fields = ["planid", "had_our_search_path", "from_our_database",
+                       "query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
+
+        # If we keep \r\n in our query string this will break our psql wrapper, replace with whitespace
+        query = "SELECT translate(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
+        query += ", translate(p.query, chr(10) || chr(13), '  ') AS p_query"
+
+        # Generate list of fields we'e interested in
+        query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
+        query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
+
+        query += " FROM pg_stat_plans p"
+        query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.planids)"
+
+        # EXPLAIN, COPY and SET commands cannot be explained
+        query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)\\y'"
+
+        # Plans in pg_catalog cannot be explained
+        query += " AND p.query !~* '\\ypg_catalog\\.'"
+
+        # We don't want our stuff in the statistics
+        query += " AND p.query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', db.querymarker)
+
+        # Remove all plans which we can't explain
+        query += " AND p.from_our_database = TRUE"
+        query += " AND p.planid = ANY (pq.planids);"
+
+        fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
+
+        # If we keep \r\n in our query string this will break our psql wrapper, replace with whitespace
+        fetch_plan += "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
+
+        queries = {}
+
+        # Fetch joined list of all queries and plans
+        for row in db.run_query(query, False):
+
+            # merge pg_stat_plans_queries values into result
+            query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
+            normalized_query = query['normalized_query']
+
+            logger.debug("Processing query: %s" % normalized_query)
+
+            # if we haven't seen the query yet - add it
+            if 'normalized_query' not in queries:
+                queries[normalized_query] = query
+
+            # merge pg_stat_plans values into result
+            plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
+
+            # Delete parmaterized example queries if wanted
+            if not option['queryparameters']:
+                del (plan['query'])
+
+            # initialize plans array
+            if 'plans' not in queries[normalized_query]:
+                queries[normalized_query]['plans'] = []
+
+            # try explaining the query if pg_stat_plans thinks it's possible
+            if plan['query_explainable']:
+                try:
+                    result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True)
+                    plan['explain'] = result[0]['explain']
+                except Exception as e:
+                    plan['explain_error'] = str(e)
+
+            queries[normalized_query]['plans'].append(plan)
+
+        return queries.values()
 
 
 class SystemInformation():
@@ -811,84 +895,7 @@ db_name: fill_me_in
     logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
-def fetch_queries():
-    both_fields = ["userid", "dbid",
-                   "calls", "rows", "total_time",
-                   "shared_blks_hit", "shared_blks_read", "shared_blks_written",
-                   "local_blks_hit", "local_blks_written",
-                   "temp_blks_read", "temp_blks_written"]
 
-    query_fields = ["time_variance", "time_stddev"] + both_fields
-
-    plan_fields = ["planid", "had_our_search_path", "from_our_database",
-                   "query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
-
-    # If we keep \r\n in our query string this will break our psql wrapper, replace with whitespace
-    query = "SELECT translate(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
-    query += ", translate(p.query, chr(10) || chr(13), '  ') AS p_query"
-
-    # Generate list of fields we'e interested in
-    query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
-    query += ", " + ", ".join(map(lambda s: "p.%s AS p_%s" % (s, s), plan_fields))
-
-    query += " FROM pg_stat_plans p"
-    query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.planids)"
-
-    # EXPLAIN, COPY and SET commands cannot be explained
-    query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)\\y'"
-
-    # Plans in pg_catalog cannot be explained
-    query += " AND p.query !~* '\\ypg_catalog\\.'"
-
-    # We don't want our stuff in the statistics
-    query += " AND p.query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', db.querymarker)
-
-    # Remove all plans which we can't explain
-    query += " AND p.from_our_database = TRUE"
-    query += " AND p.planid = ANY (pq.planids);"
-
-    fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
-
-    # If we keep \r\n in our query string this will break our psql wrapper, replace with whitespace
-    fetch_plan += "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
-
-    queries = {}
-
-    # Fetch joined list of all queries and plans
-    for row in db.run_query(query, False):
-
-        # merge pg_stat_plans_queries values into result
-        query = dict((key[3:], row[key]) for key in filter(lambda r: r.find('pq_') == 0, row))
-        normalized_query = query['normalized_query']
-
-        logger.debug("Processing query: %s" % normalized_query)
-
-        # if we haven't seen the query yet - add it
-        if 'normalized_query' not in queries:
-            queries[normalized_query] = query
-
-        # merge pg_stat_plans values into result
-        plan = dict((key[2:], row[key]) for key in filter(lambda r: r.find('p_') == 0, row))
-
-        # Delete parmaterized example queries if wanted
-        if not option['queryparameters']:
-            del (plan['query'])
-
-        # initialize plans array
-        if 'plans' not in queries[normalized_query]:
-            queries[normalized_query]['plans'] = []
-
-        # try explaining the query if pg_stat_plans thinks it's possible
-        if plan['query_explainable']:
-            try:
-                result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True)
-                plan['explain'] = result[0]['explain']
-            except Exception as e:
-                plan['explain_error'] = str(e)
-
-        queries[normalized_query]['plans'].append(plan)
-
-    return queries.values()
 
 
 def fetch_system_information():
@@ -982,7 +989,7 @@ def fetch_postgres_information():
     return info
 
 
-class pgaEncoder(json.JSONEncoder):
+class DatetimeEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
@@ -993,7 +1000,7 @@ class pgaEncoder(json.JSONEncoder):
 
 def post_data_to_web(data):
     to_post = {}
-    to_post['data'] = json.dumps(data, cls=pgaEncoder)
+    to_post['data'] = json.dumps(data, cls=DatetimeEncoder)
     to_post['api_key'] = api_key
     to_post['collected_at'] = calendar.timegm(time.gmtime())
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
@@ -1009,7 +1016,7 @@ def post_data_to_web(data):
             for plan in query['plans']:
                 if 'explain' in plan:
                     plan['explain'] = json.loads(plan['explain'])
-        print(json.dumps(to_post, sort_keys=True, indent=4, separators=(',', ': '), cls=pgaEncoder))
+        print(json.dumps(to_post, sort_keys=True, indent=4, separators=(',', ': '), cls=DatetimeEncoder))
 
         logger.info("Exiting.")
         sys.exit(0)
@@ -1045,7 +1052,7 @@ def main():
     check_database()
 
     data = {}
-    data['queries'] = fetch_queries()
+    data['queries'] = PgStatPlans().fetch_queries()
 
     if option['systeminformation']:
         data['system'] = fetch_system_information()
