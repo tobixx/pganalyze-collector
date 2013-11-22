@@ -450,7 +450,9 @@ class PgStatPlans():
                     result = db.run_query(fetch_plan % (plan['planid'], plan['userid'], plan['dbid']), True)
                     plan['explain'] = result[0]['explain']
                 except Exception as e:
+                    logger.debug("Got an error while explaining: %s" % e)
                     plan['explain_error'] = str(e)
+                    db.rollback()
 
             queries[normalized_query]['plans'].append(plan)
 
@@ -689,7 +691,6 @@ class DB():
             lambda value, curs: float(value) if value is not None else None)
         psycopg2.extensions.register_type(dec2float)
 
-
     def run_query(self, query, should_raise=False):
         logger.debug("Running query: %s" % query)
 
@@ -715,6 +716,9 @@ class DB():
         resultset = [dict(zip(columns, row)) for row in cur.fetchall()]
 
         return resultset
+
+    def rollback(self):
+        self.conn.rollback()
 
     def _connect(self, dbname, username, password, host, port):
         try:
