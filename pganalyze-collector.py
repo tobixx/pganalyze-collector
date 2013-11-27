@@ -722,7 +722,16 @@ class DB():
 
     def _connect(self, dbname, username, password, host, port):
         try:
-            return psycopg2.connect(database=dbname, user=username, password=password, host=host, port=port)
+            # psycopg2 <= 2.4.2 fails if you pass None arguments, filter them out by hand.
+            kw = {
+                'database': dbname,
+                'user': username,
+                'password': password,
+                'host': host,
+                'port': port,
+            }
+            kw = dict((key, value) for key, value in kw.iteritems() if value is not None)
+            return psycopg2.connect(**kw)
         except Exception as e:
             logger.error("Failed to connect to database: %s", str(e))
             sys.exit(1)
@@ -859,7 +868,7 @@ def read_config():
         logger.debug("%s => %s" % (k, v))
 
     # FIXME: Could do with a dict
-    global db_host, db_port, db_username, db_password, db_name, api_key, psql_binary, api_url
+    global db_host, db_port, db_username, db_password, db_name, api_key, api_url
     db_username = configdump.get('db_username')
     db_password = configdump.get('db_password')
     db_host = configdump.get('db_host')
