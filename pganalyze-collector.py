@@ -164,13 +164,7 @@ ORDER BY n.nspname,
          name;
 """
         #FIXME: This probably misses check constraints and others?
-        result = db.run_query(query)
-
-        # Convert postgres arrays to python lists of integers
-        for row in result:
-            row['foreign_columns'] = map(int, row['foreign_columns'].strip('{}').split(','))
-            row['columns'] = map(int, row['columns'].strip('{}').split(','))
-        return result
+        return db.run_query(query)
 
     def Triggers(self):
 
