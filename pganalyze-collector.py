@@ -383,7 +383,7 @@ class PgStatPlans():
         plan_fields = ["planid", "had_our_search_path", "from_our_database",
                        "query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
-        # If we keep \r\n in our query string this will break our psql wrapper, replace with whitespace
+        # Replace \r\n with whitespace to be on the safe side
         query = "SELECT translate(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
         query += ", translate(p.query, chr(10) || chr(13), '  ') AS p_query"
 
@@ -393,6 +393,8 @@ class PgStatPlans():
 
         query += " FROM pg_stat_plans p"
         query += " LEFT JOIN pg_stat_plans_queries pq ON p.planid = ANY (pq.planids)"
+
+        #FIXME: Should all these exclusions moved down to the query_explainable check?
 
         # EXPLAIN, COPY and SET commands cannot be explained
         query += " WHERE p.query !~* '^\\s*(EXPLAIN|COPY|SET)\\y'"
@@ -409,7 +411,6 @@ class PgStatPlans():
 
         fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
 
-        # If we keep \r\n in our query string this will break our psql wrapper, replace with whitespace
         fetch_plan += "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
 
         queries = {}
@@ -451,6 +452,39 @@ class PgStatPlans():
             queries[normalized_query]['plans'].append(plan)
 
         return queries.values()
+
+class PgStatStatements():
+
+    def __init__(self):
+        pass
+
+    def fetch_queries(self):
+        columns = ["userid", "dbid",
+                       "calls", "rows", "total_time",
+                       "shared_blks_hit", "shared_blks_read", "shared_blks_dirtied", "shared_blks_written",
+                       "local_blks_hit", "local_blks_read", "local_blks_dirtied", "local_blks_written",
+                       "temp_blks_read", "temp_blks_written",
+                       "blk_read_time", "blk_write_time"]
+
+
+        # Replace \r\n with whitespace to be on the safe side
+        query = "SELECT translate(query, chr(10) || chr(13), '  ') AS normalized_query"
+
+        # Generate list of fields we'e interested in
+        query += ", " + ", ".join(columns)
+
+        query += " FROM pg_stat_statements"
+
+        # We don't want our stuff in the statistics
+        query += " WHERE query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', db.querymarker)
+
+        queries = []
+
+        for row in db.run_query(query, False):
+            row['plans'] = []
+            queries.append(row)
+
+        return queries
 
 
 class SystemInformation():
@@ -752,14 +786,7 @@ def check_database():
         logger.error("You must be running PostgreSQL 9.1 or newer")
         sys.exit(1)
 
-    try:
-        query = "SELECT COUNT(*) AS count FROM pg_extension WHERE extname='pg_stat_plans'"
-        if not db.run_query(query, True)[0]['count'] == 1:
-            logger.error("Extension pg_stat_plans isn't installed")
-            sys.exit(1)
-    except Exception as e:
-        logger.error("Table pg_extension doesn't exist - this shouldn't happen")
-        sys.exit(1)
+
 
 
 def parse_options(print_help=False):
@@ -1000,7 +1027,7 @@ class DatetimeEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
-            return(str(obj))
+            return str(obj)
 
         return json.JSONEncoder.default(self, obj)
 
@@ -1044,6 +1071,21 @@ def post_data_to_web(data):
         logger.debug("Got %s while posting data: %s, sleeping 60 seconds then trying again" % (code, message))
         time.sleep(60)
 
+
+def gather_query_information():
+    query = "SELECT extname FROM pg_extension"
+
+    extensions = map(lambda q: q['extname'], db.run_query(query))
+
+    if 'pg_stat_plan' in extensions:
+        logger.debug("Found pg_stat_plans, using it for query information")
+        return PgStatPlans().fetch_queries()
+    elif 'pg_stat_statements' in extensions:
+        logger.debug("Found pg_stat_statements, using it for query information")
+        return PgStatStatements().fetch_queries()
+    else:
+        logger.error("Couldn't find either pg_stat_plans or pg_stat_statements, aborting")
+
 def main():
     global option, logger
 
@@ -1059,7 +1101,7 @@ def main():
     check_database()
 
     data = {}
-    data['queries'] = PgStatPlans().fetch_queries()
+    data['queries'] = gather_query_information()
 
     if option['systeminformation']:
         data['system'] = fetch_system_information()
