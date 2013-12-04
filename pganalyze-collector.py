@@ -50,7 +50,7 @@ except Exception as e:
 
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.4.0'
+VERSION = '0.4.1-dev'
 
 
 class PostgresInformation():
