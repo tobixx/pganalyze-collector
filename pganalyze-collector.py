@@ -30,8 +30,12 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 
-import os, sys, subprocess
-import time, calendar, datetime
+import os
+import sys
+import subprocess
+import time
+import calendar
+import datetime
 import re, json
 import urllib
 import logging
@@ -51,6 +55,7 @@ except Exception as e:
 
 MYNAME = 'pganalyze-collector'
 VERSION = '0.4.1-dev'
+API_URL = 'https://pganalyze.com/queries'
 
 
 class PostgresInformation():
@@ -466,7 +471,6 @@ class PgStatStatements():
                        "temp_blks_read", "temp_blks_written",
                        "blk_read_time", "blk_write_time"]
 
-
         # Replace \r\n with whitespace to be on the safe side
         query = "SELECT translate(query, chr(10) || chr(13), '  ') AS normalized_query"
 
@@ -503,7 +507,7 @@ class SystemInformation():
         os['architecture'] = platform.machine()
         os['kernel_version'] = platform.release()
 
-        # This only works when run as root - maybe drop again?
+        # FIXME: Refactor to use /sys/devices/virtual/dmi/id/{sys_vendor,product_name}
         dmidecode = find_executable_in_path('dmidecode')
         if dmidecode:
             try:
@@ -512,12 +516,10 @@ class SystemInformation():
                 if vendor and model:
                     os['server_model'] = "%s %s" % (vendor, model)
 
-
             except Exception as e:
                 logger.debug("Error while collecting system manufacturer/model via dmidecode: %s" % e)
 
         return os
-
 
     def CPU(self):
         result = {}
@@ -533,7 +535,6 @@ class SystemInformation():
 
         return (result)
 
-
     def _fetch_linux_cpu_data(self):
 
         with open('/proc/stat', 'r') as f:
@@ -543,8 +544,6 @@ class SystemInformation():
             cpuinfo = f.readlines()
 
         return procstat, cpuinfo
-
-
 
     def _parse_linux_cpu_procstat(self, procstat):
 
@@ -588,7 +587,7 @@ class SystemInformation():
         # We didn't get cpu core identifiers, just use the count of processors
         if not 'cores_per_socket' in hardware:
             try:
-                 hardware['cores_per_socket'] = int(max([l[1] for l in cpuinfo if l[0] == 'processor'])) + 1
+                hardware['cores_per_socket'] = int(max([l[1] for l in cpuinfo if l[0] == 'processor'])) + 1
             except ValueError:
                 # All bets are off
                 hardware['cores_per_socket'] = 1
@@ -619,12 +618,13 @@ class SystemInformation():
         result['loadavg_5min'] = loadavg[1]
         result['loadavg_15min'] = loadavg[2]
 
-        return (result)
+        return result
 
     def Storage(self):
         result = {}
 
-        if self.system != 'Linux': return None
+        if self.system != 'Linux':
+            return None
 
         # FIXME: Collect information for all tablespaces and pg_xlog
 
@@ -787,8 +787,6 @@ def check_database():
         sys.exit(1)
 
 
-
-
 def parse_options(print_help=False):
     parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
 
@@ -842,7 +840,6 @@ def configure_logger():
 
 def read_config():
     logger.debug("Reading config")
-
 
     configfile = None
     for file in option['configfile']:
@@ -899,12 +896,13 @@ def read_config():
     db_port = configdump.get('db_port')
     db_name = configdump.get('db_name')
     api_key = configdump.get('api_key')
-    api_url = configdump.get('api_url', 'https://pganalyze.com/queries')
+    api_url = configdump.get('api_url', API_URL)
 
     if not db_name and api_key:
         logger.error(
             "Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
         sys.exit(1)
+
 
 def write_config():
     sample_config = '''[pganalyze]
@@ -914,8 +912,8 @@ db_name: fill_me_in
 #db_password:
 #db_host: localhost
 #db_port: 5432
-#api_url: https://pganalyze.com/queries
-'''
+#api_url: %s
+''' % API_URL
 
     cf = option['configfile'][0]
 
@@ -929,9 +927,6 @@ db_name: fill_me_in
     logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
-
-
-
 def fetch_system_information():
     SI = SystemInformation()
     info = {}
@@ -942,7 +937,7 @@ def fetch_system_information():
     info['storage'] = SI.Storage()
     info['memory'] = SI.Memory()
 
-    return (info)
+    return info
 
 
 def fetch_postgres_information():
@@ -1041,6 +1036,7 @@ def post_data_to_web(data):
     to_post['options'] = {}
     to_post['options']['query_parameters'] = option['queryparameters']
     to_post['options']['system_information'] = option['systeminformation']
+    to_post['options']['query_source'] = option['query_source']
 
     if option['dryrun']:
         logger.info("Dumping data that would get posted")
@@ -1072,19 +1068,23 @@ def post_data_to_web(data):
         time.sleep(60)
 
 
-def gather_query_information():
+def fetch_query_information():
     query = "SELECT extname FROM pg_extension"
 
     extensions = map(lambda q: q['extname'], db.run_query(query))
-
-    if 'pg_stat_plan' in extensions:
+#    pprint(PgStatPlans().fetch_queries())
+#    pprint(PgStatStatements().fetch_queries())
+#    sys.exit(42)
+    if 'pg_stat_plans' in extensions:
         logger.debug("Found pg_stat_plans, using it for query information")
-        return PgStatPlans().fetch_queries()
+        return ['pg_stat_plans', PgStatPlans().fetch_queries()]
     elif 'pg_stat_statements' in extensions:
         logger.debug("Found pg_stat_statements, using it for query information")
-        return PgStatStatements().fetch_queries()
+        return ['pg_stat_statements', PgStatStatements().fetch_queries()]
     else:
         logger.error("Couldn't find either pg_stat_plans or pg_stat_statements, aborting")
+        sys.exit(1)
+
 
 def main():
     global option, logger
@@ -1101,7 +1101,7 @@ def main():
     check_database()
 
     data = {}
-    data['queries'] = gather_query_information()
+    (option['query_source'], data['queries']) = fetch_query_information()
 
     if option['systeminformation']:
         data['system'] = fetch_system_information()
