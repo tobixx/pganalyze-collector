@@ -1072,9 +1072,6 @@ def fetch_query_information():
     query = "SELECT extname FROM pg_extension"
 
     extensions = map(lambda q: q['extname'], db.run_query(query))
-#    pprint(PgStatPlans().fetch_queries())
-#    pprint(PgStatStatements().fetch_queries())
-#    sys.exit(42)
     if 'pg_stat_plans' in extensions:
         logger.debug("Found pg_stat_plans, using it for query information")
         return ['pg_stat_plans', PgStatPlans().fetch_queries()]
