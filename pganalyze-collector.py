@@ -1054,6 +1054,7 @@ def post_data_to_web(data):
     num_tries = 0
     while True:
         try:
+            # FIXME: urllib doesn't do any SSL verification
             res = urllib.urlopen(api_url, urllib.urlencode(to_post))
             message = res.read()
             code = res.getcode()
