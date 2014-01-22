@@ -380,7 +380,7 @@ class PgStatPlans():
         both_fields = ["userid", "dbid",
                        "calls", "rows", "total_time",
                        "shared_blks_hit", "shared_blks_read", "shared_blks_written",
-                       "local_blks_hit", "local_blks_written",
+                       "local_blks_hit", "local_blks_read", "local_blks_written",
                        "temp_blks_read", "temp_blks_written"]
 
         query_fields = ["time_variance", "time_stddev"] + both_fields
@@ -797,6 +797,8 @@ def parse_options(print_help=False):
                       help='Specifiy alternative path for config file. Defaults: %default')
     parser.add_option('--generate-config', action='store_true', dest='generate_config',
                       help='Writes a default configuration file to $HOME/.pganalyze_collector.conf unless specified otherwise with --config')
+    parser.add_option('--api-key', action='store', type='string', dest='apikey',
+                      help='Use specified API key when writing a fresh config file')
     parser.add_option('--cron', '-q', action='store_true', dest='quiet',
                       help='Suppress all non-warning output during normal operation')
     parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
@@ -905,15 +907,18 @@ def read_config():
 
 
 def write_config():
+
+    apikey = option['apikey'] if option['apikey'] is not None else 'fill_me_in'
+
     sample_config = '''[pganalyze]
-api_key: fill_me_in
+api_key: %s
 db_name: fill_me_in
 #db_username:
 #db_password:
 #db_host: localhost
 #db_port: 5432
 #api_url: %s
-''' % API_URL
+''' % (apikey, API_URL)
 
     cf = option['configfile'][0]
 
@@ -1113,7 +1118,10 @@ def main():
 
         if not option['noreset']:
             logger.debug("Resetting stats!")
-            db.run_query("SELECT pg_stat_plans_reset()")
+            if option['query_source'] == 'pg_stat_plans':
+                db.run_query("SELECT pg_stat_plans_reset()")
+            elif option['query_source'] == 'pg_stat_statements':
+                db.run_query("SELECT pg_stat_statements_reset()")
     else:
         logger.error("Rejected by server: %s" % output)
 
