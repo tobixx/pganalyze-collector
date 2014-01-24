@@ -54,7 +54,7 @@ except Exception as e:
 
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.5.0'
+VERSION = '0.5.1-dev'
 API_URL = 'https://pganalyze.com/queries'
 
 
