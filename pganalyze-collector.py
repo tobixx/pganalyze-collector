@@ -40,17 +40,32 @@ import re, json
 import urllib
 import logging
 import ConfigParser
+from decimal import Decimal
 from optparse import OptionParser
 from stat import *
 import platform
 from pprint import pprint
 
-try:
-    import psycopg2
-except Exception as e:
-    print("*** Failed to load psycopg2: %s" % str(e))
-    print("*** Please install the python-psycopg2 package")
-    sys.exit(1)
+ON_HEROKU = os.environ.has_key('DYNO')
+
+if ON_HEROKU:
+    import inspect
+    cmd_folder = os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0]))
+    if cmd_folder not in sys.path:
+        sys.path.insert(0, cmd_folder)
+
+    try:
+        import pg8000 as pg
+    except Exception as e:
+        print("*** Failed to load pg8000: %s" % str(e))
+        sys.exit(1)
+else:
+    try:
+        import psycopg2 as pg
+    except Exception as e:
+        print("*** Failed to load psycopg2: %s" % str(e))
+        print("*** Please install the python-psycopg2 package")
+        sys.exit(1)
 
 
 MYNAME = 'pganalyze-collector'
@@ -103,7 +118,7 @@ ORDER BY n.nspname,
         query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
-       i.indkey AS columns,
+       i.indkey::varchar AS columns,
        c2.relname AS name,
        pg_relation_size(c2.oid) AS size_bytes,
        i.indisprimary AS is_primary,
@@ -288,6 +303,7 @@ FROM (
   LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid
 ) AS sml
 """
+        if pg.__name__ == 'pg8000': query = query.replace('%', '%%') # pg8000 thinks its a format string
         result = db.run_query(query)
         return result
 
@@ -709,15 +725,7 @@ class DB():
     querymarker = '/* ' + MYNAME + ' */'
 
     def __init__(self, dbname, username=None, password=None, host=None, port=None):
-
         self.conn = self._connect(dbname, username, password, host, port)
-
-        # Convert decimal values to float during read to make JSON encoding easier
-        dec2float = psycopg2.extensions.new_type(
-            psycopg2.extensions.DECIMAL.values,
-            'DEC2FLOAT',
-            lambda value, curs: float(value) if value is not None else None)
-        psycopg2.extensions.register_type(dec2float)
 
     def run_query(self, query, should_raise=False):
         logger.debug("Running query: %s" % query)
@@ -740,8 +748,15 @@ class DB():
         # Fetch column headers
         columns = [f[0] for f in cur.description]
 
+        # Convert decimal values to float to make JSON encoding easier
+        rows = cur.fetchall()
+        for row in range(len(rows)):
+            for col in range(len(rows[row])):
+                if isinstance(rows[row][col], Decimal):
+                    rows[row][col] = float(rows[row][col])
+
         # Build list of hashes
-        resultset = [dict(zip(columns, row)) for row in cur.fetchall()]
+        resultset = [dict(zip(columns, row)) for row in rows]
 
         return resultset
 
@@ -759,7 +774,7 @@ class DB():
                 'port': port,
             }
             kw = dict((key, value) for key, value in kw.iteritems() if value is not None)
-            return psycopg2.connect(**kw)
+            return pg.connect(**kw)
         except Exception as e:
             logger.error("Failed to connect to database: %s", str(e))
             sys.exit(1)
@@ -778,7 +793,7 @@ def check_database():
     global db
     db = DB(host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
 
-    if not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
+    if not ON_HEROKU and not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
         logger.error("User %s isn't a superuser" % db_username)
         sys.exit(1)
 
@@ -839,6 +854,21 @@ def configure_logger():
 
     return logtemp
 
+
+import urlparse
+def read_heroku_config():
+    urlparse.uses_netloc.append('postgres')
+    url = urlparse.urlparse(os.environ['DATABASE_URL'])
+    
+    global db_host, db_port, db_username, db_password, db_name, api_key, api_url
+    db_username = url.username
+    db_password = url.password
+    db_host = url.hostname
+    db_port = url.port
+    db_name = url.path[1:]
+    
+    api_key = os.environ['PGANALYZE_APIKEY']
+    api_url = API_URL
 
 def read_config():
     logger.debug("Reading config")
@@ -1098,15 +1128,18 @@ def main():
     if option['generate_config']:
         write_config()
         sys.exit(0)
-
-    read_config()
+    
+    if ON_HEROKU:
+        read_heroku_config()
+    else:
+        read_config()
 
     check_database()
 
     data = {}
     (option['query_source'], data['queries']) = fetch_query_information()
 
-    if option['systeminformation']:
+    if not ON_HEROKU and option['systeminformation']:
         data['system'] = fetch_system_information()
 
     data['postgres'] = fetch_postgres_information()
