@@ -676,10 +676,10 @@ class SystemInformation():
         # Vendor/Model doesn't exist for metadevices
         if os.path.exists(sysfs_device_path + 'device/vendor'):
             with open(sysfs_device_path + 'device/vendor', 'r') as f:
-                vendor = f.readline().trim()
+                vendor = f.readline().strip()
 
             with open(sysfs_device_path + 'device/model', 'r') as f:
-                model = f.readline().trim()
+                model = f.readline().strip()
 
             result['hardware'] = " ".join(vendor, model)
 
