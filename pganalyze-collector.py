@@ -36,7 +36,9 @@ import subprocess
 import time
 import calendar
 import datetime
-import re, json
+import re
+import json
+import urlparse
 import urllib
 import logging
 import ConfigParser
@@ -48,18 +50,19 @@ from pprint import pprint
 
 ON_HEROKU = os.environ.has_key('DYNO')
 
+
 while True:
     try:
-        import psycopg2 as pg
+        import psycopg_2 as pg
         break
     except Exception as e:
-        logger.debug("Couldn't import psycopg2: %s" % str(e))
+        pass
 
     try:
-        import pg800 as pg
+        import pg8000 as pg
         break
     except Exception as e:
-        logger.debug("Couldn't import pg8000: %s" % str(e))
+        pass
 
     print("*** Couldn't import database driver")
     print("*** Please install the python-psycopg2 package or the pg8000 module")
@@ -326,8 +329,9 @@ FROM (
     def Backends(self):
         pre92 = int(db.run_query('SHOW server_version_num')[0]['server_version_num']) < 90200
 
-        querycolumns = 'datname AS database, usename AS username, application_name, client_addr, client_hostname,' \
-                       'client_port, backend_start, xact_start, query_start, waiting'
+        querycolumns = 'datname AS database, usename AS username, application_name, client_addr::text,' \
+                       ' client_hostname, client_port, backend_start, xact_start, query_start, waiting'
+
 
         pre92_columns = ", procpid AS pid, translate(current_query, chr(10) || chr(13), '  ') AS query"
         post92_columns = ", pid, translate(query, chr(10) || chr(13), '  ') AS query, state"
@@ -368,7 +372,7 @@ SELECT d.datname AS database,
        l.page,
        l.tuple,
        l.virtualxid,
-       l.transactionid,
+       l.transactionid::text,
        l.virtualtransaction,
        l.pid,
        l.mode,
@@ -708,7 +712,7 @@ class SystemInformation():
         result['swap_total_bytes'] = meminfo['SwapTotal']
         result['swap_free_bytes'] = meminfo['SwapFree']
 
-        return (result)
+        return result
 
     def _find_mount_point(self, path):
         path = os.path.abspath(path)
@@ -725,6 +729,12 @@ class DB():
         logger.debug("Connected to database, using driver %s" % pg.__name__)
 
     def run_query(self, query, should_raise=False):
+        # pg8000 is picky regarding % characters in query strings, escaping with extreme prejudice
+        if pg.__name__ == 'pg8000' and '%' in query:
+            logger.debug("Escaping % characters in query string")
+            query = query.replace('%', '%%')
+
+
         logger.debug("Running query: %s" % query)
 
         # Prepending querymarker to be able to filter own queries during subsequent runs
@@ -762,14 +772,15 @@ class DB():
 
     def _connect(self, dbname, username, password, host, port):
         try:
-            # psycopg2 <= 2.4.2 fails if you pass None arguments, filter them out by hand.
             kw = {
                 'database': dbname,
                 'user': username,
                 'password': password,
                 'host': host,
-                'port': port,
+                # pg8000 expects port to be of type integer
+                'port': int(port),
             }
+            # psycopg2 <= 2.4.2 fails if you pass None arguments, filter them out by hand.
             kw = dict((key, value) for key, value in kw.iteritems() if value is not None)
             return pg.connect(**kw)
         except Exception as e:
@@ -852,8 +863,8 @@ def configure_logger():
     return logtemp
 
 
-import urlparse
 def read_heroku_config():
+    logger.debug("Reading heroku-style config from environment DATABASE_URL")
     urlparse.uses_netloc.append('postgres')
     url = urlparse.urlparse(os.environ['DATABASE_URL'])
     
@@ -866,6 +877,7 @@ def read_heroku_config():
     
     api_key = os.environ['PGANALYZE_APIKEY']
     api_url = API_URL
+
 
 def read_config():
     logger.debug("Reading config")
