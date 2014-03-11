@@ -42,7 +42,6 @@ import urlparse
 import urllib
 import logging
 import ConfigParser
-from decimal import Decimal
 from optparse import OptionParser
 from stat import *
 import platform
@@ -53,7 +52,7 @@ ON_HEROKU = os.environ.has_key('DYNO')
 
 while True:
     try:
-        import psycopg_2 as pg
+        import psycopg2 as pg
         break
     except Exception as e:
         pass
@@ -430,9 +429,9 @@ class PgStatPlans():
         query += " AND p.from_our_database = TRUE"
         query += " AND p.planid = ANY (pq.planids);"
 
-        fetch_plan = "SET pg_stat_plans.explain_format TO JSON; "
+        set_explain_format = "SET pg_stat_plans.explain_format TO JSON; "
 
-        fetch_plan += "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
+        fetch_plan = "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
 
         queries = {}
 
@@ -460,6 +459,7 @@ class PgStatPlans():
             if 'plans' not in queries[normalized_query]:
                 queries[normalized_query]['plans'] = []
 
+            db.run_query(set_explain_format, True)
             # try explaining the query if pg_stat_plans thinks it's possible
             if plan['query_explainable']:
                 try:
@@ -469,6 +469,7 @@ class PgStatPlans():
                     logger.debug("Got an error while explaining: %s" % e)
                     plan['explain_error'] = str(e)
                     db.rollback()
+                    db.run_query(set_explain_format, True)
 
             queries[normalized_query]['plans'].append(plan)
 
@@ -728,12 +729,23 @@ class DB():
         self.conn = self._connect(dbname, username, password, host, port)
         logger.debug("Connected to database, using driver %s" % pg.__name__)
 
+        # Convert decimal values to float since JSON can't handle Decimals
+        if pg.__name__ == 'pg8000':
+            self._pg8000_numeric_in = self.conn.pg_types[1700][1]
+            self.conn.pg_types[1700] = (pg.core.FC_TEXT, self._pg8000_float_numeric_wrapper)
+
+        if pg.__name__ == 'psycopg2':
+            dec2float = pg.extensions.new_type(
+                pg.extensions.DECIMAL.values,
+                'DEC2FLOAT',
+                lambda value, curs: float(value) if value is not None else None)
+            pg.extensions.register_type(dec2float)
+
     def run_query(self, query, should_raise=False):
         # pg8000 is picky regarding % characters in query strings, escaping with extreme prejudice
         if pg.__name__ == 'pg8000' and '%' in query:
             logger.debug("Escaping % characters in query string")
             query = query.replace('%', '%%')
-
 
         logger.debug("Running query: %s" % query)
 
@@ -752,23 +764,22 @@ class DB():
                 logger.error(line)
             sys.exit(1)
 
+        # Didn't get any column definition back, this is most likely a return-less command (SET et al)
+        if cur.description is None:
+            return []
+
         # Fetch column headers
         columns = [f[0] for f in cur.description]
 
-        # Convert decimal values to float to make JSON encoding easier
-        rows = cur.fetchall()
-        for row in range(len(rows)):
-            for col in range(len(rows[row])):
-                if isinstance(rows[row][col], Decimal):
-                    rows[row][col] = float(rows[row][col])
-
         # Build list of hashes
-        resultset = [dict(zip(columns, row)) for row in rows]
-
-        return resultset
+        result = [dict(zip(columns, row)) for row in cur.fetchall()]
+        return result
 
     def rollback(self):
         self.conn.rollback()
+
+    def _pg8000_float_numeric_wrapper(self, data, offset, length):
+        return float(self._pg8000_numeric_in(data, offset, length))
 
     def _connect(self, dbname, username, password, host, port):
         try:
