@@ -48,24 +48,22 @@ from pprint import pprint
 
 ON_HEROKU = os.environ.has_key('DYNO')
 
-if ON_HEROKU:
-    import inspect
-    cmd_folder = os.path.realpath(os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0]))
-    if cmd_folder not in sys.path:
-        sys.path.insert(0, cmd_folder)
-
-    try:
-        import pg8000 as pg
-    except Exception as e:
-        print("*** Failed to load pg8000: %s" % str(e))
-        sys.exit(1)
-else:
+while True:
     try:
         import psycopg2 as pg
+        break
     except Exception as e:
-        print("*** Failed to load psycopg2: %s" % str(e))
-        print("*** Please install the python-psycopg2 package")
-        sys.exit(1)
+        logger.debug("Couldn't import psycopg2: %s" % str(e))
+
+    try:
+        import pg800 as pg
+        break
+    except Exception as e:
+        logger.debug("Couldn't import pg8000: %s" % str(e))
+
+    print("*** Couldn't import database driver")
+    print("*** Please install the python-psycopg2 package or the pg8000 module")
+    sys.exit(1)
 
 
 MYNAME = 'pganalyze-collector'
@@ -76,7 +74,6 @@ API_URL = 'https://pganalyze.com/queries'
 class PostgresInformation():
     def __init__(self):
         return
-
 
     def Columns(self):
         query = """
@@ -118,7 +115,7 @@ ORDER BY n.nspname,
         query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
-       i.indkey::varchar AS columns,
+       i.indkey::text AS columns,
        c2.relname AS name,
        pg_relation_size(c2.oid) AS size_bytes,
        i.indisprimary AS is_primary,
@@ -153,7 +150,6 @@ ORDER BY n.nspname,
             # We need to convert the Postgres legacy int2vector to an int[]
             row['columns'] = map(int, str(row['columns']).split())
         return (result)
-
 
     def Constraints(self):
         """
@@ -232,7 +228,7 @@ code can be found at https://github.com/bucardo/check_postgres
 
         """
 
-        query = """
+        query = '''
 SELECT
   current_database() AS db, schemaname, tablename, reltuples::bigint AS tups, relpages::bigint AS pages, otta,
   ROUND(CASE WHEN otta=0 OR sml.relpages=0 OR sml.relpages=otta THEN 0.0 ELSE sml.relpages/otta::numeric END,1) AS tbloat,
@@ -302,8 +298,9 @@ FROM (
   LEFT JOIN pg_index i ON indrelid = cc.oid
   LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid
 ) AS sml
-"""
-        if pg.__name__ == 'pg8000': query = query.replace('%', '%%') # pg8000 thinks its a format string
+'''
+        #FIXME: Can we remove this hackaround?
+#        if pg.__name__ == 'pg8000': query = query.replace('%', '%%') # pg8000 thinks its a format string
         result = db.run_query(query)
         return result
 
@@ -361,7 +358,6 @@ FROM (
                 del(row['query'])
 
         return result
-
 
     def Locks(self):
         query = """
@@ -512,16 +508,16 @@ class SystemInformation():
         self.system = platform.system()
 
     def OS(self):
-        os = {}
-        os['system'] = platform.system()
+        osinfo = {}
+        osinfo['system'] = platform.system()
         if self.system == 'Linux':
-            (os['distribution'], os['distribution_version']) = platform.linux_distribution()[0:2]
+            (osinfo['distribution'], osinfo['distribution_version']) = platform.linux_distribution()[0:2]
         elif self.system == 'Darwin':
-            os['distribution'] = 'OS X'
-            os['distribution_version'] = platform.mac_ver()[0]
+            osinfo['distribution'] = 'OS X'
+            osinfo['distribution_version'] = platform.mac_ver()[0]
 
-        os['architecture'] = platform.machine()
-        os['kernel_version'] = platform.release()
+        osinfo['architecture'] = platform.machine()
+        osinfo['kernel_version'] = platform.release()
 
         # FIXME: Refactor to use /sys/devices/virtual/dmi/id/{sys_vendor,product_name}
         dmidecode = find_executable_in_path('dmidecode')
@@ -530,12 +526,12 @@ class SystemInformation():
                 vendor = subprocess.check_output([dmidecode, '-s', 'system-manufacturer']).strip()
                 model = subprocess.check_output([dmidecode, '-s', 'system-product-name']).strip()
                 if vendor and model:
-                    os['server_model'] = "%s %s" % (vendor, model)
+                    osinfo['server_model'] = "%s %s" % (vendor, model)
 
             except Exception as e:
                 logger.debug("Error while collecting system manufacturer/model via dmidecode: %s" % e)
 
-        return os
+        return osinfo
 
     def CPU(self):
         result = {}
@@ -726,6 +722,7 @@ class DB():
 
     def __init__(self, dbname, username=None, password=None, host=None, port=None):
         self.conn = self._connect(dbname, username, password, host, port)
+        logger.debug("Connected to database, using driver %s" % pg.__name__)
 
     def run_query(self, query, should_raise=False):
         logger.debug("Running query: %s" % query)
@@ -1132,6 +1129,7 @@ def main():
     
     if ON_HEROKU:
         read_heroku_config()
+        option['systeminformation'] = False
     else:
         read_config()
 
@@ -1140,7 +1138,7 @@ def main():
     data = {}
     (option['query_source'], data['queries']) = fetch_query_information()
 
-    if not ON_HEROKU and option['systeminformation']:
+    if option['systeminformation']:
         data['system'] = fetch_system_information()
 
     data['postgres'] = fetch_postgres_information()
