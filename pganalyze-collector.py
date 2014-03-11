@@ -429,9 +429,10 @@ class PgStatPlans():
         query += " AND p.from_our_database = TRUE"
         query += " AND p.planid = ANY (pq.planids);"
 
+        fetch_plan = "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
         set_explain_format = "SET pg_stat_plans.explain_format TO JSON; "
 
-        fetch_plan = "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
+        db.run_query(set_explain_format, True)
 
         queries = {}
 
@@ -459,7 +460,6 @@ class PgStatPlans():
             if 'plans' not in queries[normalized_query]:
                 queries[normalized_query]['plans'] = []
 
-            db.run_query(set_explain_format, True)
             # try explaining the query if pg_stat_plans thinks it's possible
             if plan['query_explainable']:
                 try:
