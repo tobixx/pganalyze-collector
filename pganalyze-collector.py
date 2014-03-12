@@ -498,6 +498,8 @@ class PgStatStatements():
 
         # We don't want our stuff in the statistics
         query += " WHERE query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', db.querymarker)
+        # Filter out queries we shouldn't see in the first place
+        query += " AND query <> '<insufficient privilege>'"
 
         queries = []
 
@@ -788,11 +790,13 @@ class DB():
                 'user': username,
                 'password': password,
                 'host': host,
-                # pg8000 expects port to be of type integer
-                'port': int(port),
+                'port': port,
             }
             # psycopg2 <= 2.4.2 fails if you pass None arguments, filter them out by hand.
             kw = dict((key, value) for key, value in kw.iteritems() if value is not None)
+            # pg8000 expects port to be of type integer
+            if 'port' in kw:
+                kw['port'] = int(kw['port'])
             return pg.connect(**kw)
         except Exception as e:
             logger.error("Failed to connect to database: %s", str(e))
