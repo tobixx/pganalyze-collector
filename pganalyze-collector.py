@@ -1092,10 +1092,9 @@ def post_data_to_web(data):
     to_post['api_key'] = api_key
     to_post['collected_at'] = calendar.timegm(time.gmtime())
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
-    to_post['options'] = {}
-    to_post['options']['query_parameters'] = option['queryparameters']
-    to_post['options']['system_information'] = option['systeminformation']
-    to_post['options']['query_source'] = option['query_source']
+    to_post['query_parameters'] = option['queryparameters']
+    to_post['system_information'] = option['systeminformation']
+    to_post['query_source'] = option['query_source']
 
     if option['dryrun']:
         logger.info("Dumping data that would get posted")
