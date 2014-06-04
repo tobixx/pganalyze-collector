@@ -332,8 +332,8 @@ FROM (
                        ' client_hostname, client_port, backend_start, xact_start, query_start, waiting'
 
 
-        pre92_columns = ", procpid AS pid, translate(current_query, chr(10) || chr(13), '  ') AS query"
-        post92_columns = ", pid, translate(query, chr(10) || chr(13), '  ') AS query, state"
+        pre92_columns = ", procpid AS pid, current_query AS query"
+        post92_columns = ", pid, query, state"
         querycolumns += pre92_columns if pre92 else post92_columns
 
         pidcol = 'procpid' if pre92 else 'pid'
@@ -403,9 +403,8 @@ class PgStatPlans():
         plan_fields = ["planid", "had_our_search_path", "from_our_database",
                        "query_explainable", "last_startup_cost", "last_total_cost"] + both_fields
 
-        # Replace \r\n with whitespace to be on the safe side
-        query = "SELECT translate(pq.normalized_query, chr(10) || chr(13), '  ') AS pq_normalized_query"
-        query += ", translate(p.query, chr(10) || chr(13), '  ') AS p_query"
+        query = "SELECT pq.normalized_query AS pq_normalized_query"
+        query += ", p.query AS p_query"
 
         # Generate list of fields we'e interested in
         query += ", " + ", ".join(map(lambda s: "pq.%s AS pq_%s" % (s, s), query_fields))
@@ -429,7 +428,7 @@ class PgStatPlans():
         query += " AND p.from_our_database = TRUE"
         query += " AND p.planid = ANY (pq.planids);"
 
-        fetch_plan = "SELECT translate(pg_stat_plans_explain(%s, %s, %s), chr(10) || chr(13), '  ') AS explain"
+        fetch_plan = "SELECT pg_stat_plans_explain(%s, %s, %s) AS explain"
         set_explain_format = "SET pg_stat_plans.explain_format TO JSON; "
 
         db.run_query(set_explain_format, True)
@@ -488,8 +487,7 @@ class PgStatStatements():
                        "temp_blks_read", "temp_blks_written",
                        "blk_read_time", "blk_write_time"]
 
-        # Replace \r\n with whitespace to be on the safe side
-        query = "SELECT translate(query, chr(10) || chr(13), '  ') AS normalized_query"
+        query = "SELECT query AS normalized_query"
 
         # Generate list of fields we'e interested in
         query += ", " + ", ".join(columns)
