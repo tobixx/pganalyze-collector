@@ -498,6 +498,8 @@ class PgStatStatements():
         query += " WHERE query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', db.querymarker)
         # Filter out queries we shouldn't see in the first place
         query += " AND query <> '<insufficient privilege>'"
+        # Only get queries from current database
+        query += " AND dbid IN (SELECT oid FROM pg_database WHERE datname = current_database())"
 
         queries = []
 
