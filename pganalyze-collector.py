@@ -56,14 +56,16 @@ ON_HEROKU = os.environ.has_key('DYNO')
 MYNAME = 'pganalyze-collector'
 VERSION = '0.5.1-dev'
 API_URL = 'https://pganalyze.com/queries'
+dbconf = {}
 
 
 def check_database():
     global db
-    db = DB(querymarker=MYNAME, host=db_host, port=db_port, username=db_username, password=db_password, dbname=db_name)
+    db = DB(querymarker=MYNAME, host=dbconf['host'], port=dbconf['port'], username=dbconf['username'],
+            password=dbconf['password'], dbname=dbconf['dbname'])
 
     if not ON_HEROKU and not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
-        logger.error("User %s isn't a superuser" % db_username)
+        logger.error("User %s isn't a superuser" % dbconf['username'])
         sys.exit(1)
 
     if not db.run_query('SHOW server_version_num')[0]['server_version_num'] >= 90100:
@@ -127,12 +129,12 @@ def read_heroku_config():
     urlparse.uses_netloc.append('postgres')
     url = urlparse.urlparse(os.environ['DATABASE_URL'])
     
-    global db_host, db_port, db_username, db_password, db_name, api_key, api_url
-    db_username = url.username
-    db_password = url.password
-    db_host = url.hostname
-    db_port = url.port
-    db_name = url.path[1:]
+    global dbconf
+    dbconf['username'] = url.username
+    dbconf['password'] = url.password
+    dbconf['host'] = url.hostname
+    dbconf['port'] = url.port
+    dbconf['dbname'] = url.path[1:]
     
     api_key = os.environ['PGANALYZE_APIKEY']
     api_url = API_URL
@@ -185,20 +187,19 @@ def read_config():
         if k == 'db_password': v = '***removed***'
         logger.debug("%s => %s" % (k, v))
 
-    # FIXME: Could do with a dict
-    global db_host, db_port, db_username, db_password, db_name, api_key, api_url
-    db_username = configdump.get('db_username')
-    db_password = configdump.get('db_password')
-    db_host = configdump.get('db_host')
+    global dbconf
+    dbconf['username'] = configdump.get('db_username')
+    dbconf['password'] = configdump.get('db_password')
+    dbconf['host'] = configdump.get('db_host')
     # Set db_host to localhost if not specified and db_password present to force non-unixsocket-connection
-    if not db_host and db_password:
-        db_host = 'localhost'
-    db_port = configdump.get('db_port')
-    db_name = configdump.get('db_name')
-    api_key = configdump.get('api_key')
-    api_url = configdump.get('api_url', API_URL)
+    if not dbconf['host'] and dbconf['password']:
+        dbconf['host'] = 'localhost'
+    dbconf['port'] = configdump.get('db_port')
+    dbconf['dbname'] = configdump.get('db_name')
+    dbconf['api_key'] = configdump.get('api_key')
+    dbconf['api_url'] = configdump.get('api_url', API_URL)
 
-    if not db_name and api_key:
+    if not dbconf['dbname'] and dbconf['api_key']:
         logger.error(
             "Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
         sys.exit(1)
@@ -333,7 +334,7 @@ class DatetimeEncoder(json.JSONEncoder):
 def post_data_to_web(data):
     to_post = {}
     to_post['data'] = json.dumps(data, cls=DatetimeEncoder)
-    to_post['api_key'] = api_key
+    to_post['api_key'] = dbconf['api_key']
     to_post['collected_at'] = calendar.timegm(time.gmtime())
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
     to_post['query_parameters'] = option['queryparameters']
@@ -357,7 +358,7 @@ def post_data_to_web(data):
     while True:
         try:
             # FIXME: urllib doesn't do any SSL verification
-            res = urllib.urlopen(api_url, urllib.urlencode(to_post))
+            res = urllib.urlopen(dbconf['api_url'], urllib.urlencode(to_post))
             message = res.read()
             code = res.getcode()
         except IOError as e:
