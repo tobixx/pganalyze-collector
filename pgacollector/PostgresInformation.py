@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright (c) 2014, pganalyze Team <team@pganalyze.com>
 #  All rights reserved.
 
@@ -10,7 +8,6 @@ logger = logging.getLogger(__name__)
 class PostgresInformation():
     def __init__(self, db):
         self.db = db
-        return
 
     def Columns(self):
         query = """
