@@ -29,9 +29,11 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+# Set up vendor include path
+import sys
+sys.path.insert(1, sys.path[0] + '/vendor/')
 
 import os
-import sys
 import time
 import calendar
 import datetime
