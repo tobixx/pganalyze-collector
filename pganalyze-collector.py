@@ -37,22 +37,19 @@ import calendar
 import datetime
 import re
 import json
-import urlparse
 import urllib
 import logging
-import ConfigParser
 from optparse import OptionParser
-from stat import *
 from pgacollector.PostgresInformation import PostgresInformation
 from pgacollector.PgStatPlans import PgStatPlans
 from pgacollector.PgStatStatements import PgStatStatements
 from pgacollector.SystemInformation import SystemInformation
 from pgacollector.DB import DB
+from pgacollector.Configuration import Configuration
 
 
 from pprint import pprint
 
-ON_HEROKU = os.environ.has_key('DYNO')
 MYNAME = 'pganalyze-collector'
 VERSION = '0.5.1-dev'
 API_URL = 'https://pganalyze.com/queries'
@@ -64,7 +61,7 @@ def check_database():
     db = DB(querymarker=MYNAME, host=dbconf['host'], port=dbconf['port'], username=dbconf['username'],
             password=dbconf['password'], dbname=dbconf['dbname'])
 
-    if not ON_HEROKU and not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
+    if not SystemInformation().on_heroku and not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
         logger.error("User %s isn't a superuser" % dbconf['username'])
         sys.exit(1)
 
@@ -105,6 +102,7 @@ def parse_options(print_help=False):
     (options, args) = parser.parse_args()
     options = options.__dict__
     options['configfile'] = re.split(',\s+', options['configfile'].replace('$HOME', os.environ['HOME']))
+    options['api_url'] = API_URL
 
     return options
 
@@ -123,112 +121,6 @@ def configure_logger():
 
     return logtemp
 
-
-def read_heroku_config():
-    logger.debug("Reading heroku-style config from environment DATABASE_URL")
-    urlparse.uses_netloc.append('postgres')
-    url = urlparse.urlparse(os.environ['DATABASE_URL'])
-    
-    global dbconf
-    dbconf['username'] = url.username
-    dbconf['password'] = url.password
-    dbconf['host'] = url.hostname
-    dbconf['port'] = url.port
-    dbconf['dbname'] = url.path[1:]
-    
-    api_key = os.environ['PGANALYZE_APIKEY']
-    api_url = API_URL
-
-
-def read_config():
-    logger.debug("Reading config")
-
-    configfile = None
-    for file in option['configfile']:
-        try:
-            mode = os.stat(file).st_mode
-        except Exception as e:
-            logger.debug("Couldn't stat file: %s" % e)
-            continue
-
-        if not S_ISREG(mode):
-            logger.debug("%s isn't a regular file" % file)
-            continue
-
-        if int(oct(mode)[-2:]) != 0:
-            logger.error("Configfile is accessible by other users, please run `chmod go-rwx %s`" % file)
-            sys.exit(1)
-
-        if not os.access(file, os.R_OK):
-            logger.debug("%s isn't readable" % file)
-            continue
-
-        configfile = file
-        break
-
-    if not configfile:
-        logger.error("Couldn't find a readable config file, perhaps create one with --generate-config?")
-        sys.exit(1)
-
-    configparser = ConfigParser.RawConfigParser()
-
-    try:
-        configparser.read(configfile)
-    except Exception as e:
-        logger.error(
-            "Failure while parsing %s: %s, please fix or create a new one with --generate-config" % (configfile, e))
-        sys.exit(1)
-
-    configdump = {}
-    logger.debug("read config from %s" % configfile)
-    for k, v in configparser.items('pganalyze'):
-        configdump[k] = v
-        # Don't print the password to debug output
-        if k == 'db_password': v = '***removed***'
-        logger.debug("%s => %s" % (k, v))
-
-    global dbconf
-    dbconf['username'] = configdump.get('db_username')
-    dbconf['password'] = configdump.get('db_password')
-    dbconf['host'] = configdump.get('db_host')
-    # Set db_host to localhost if not specified and db_password present to force non-unixsocket-connection
-    if not dbconf['host'] and dbconf['password']:
-        dbconf['host'] = 'localhost'
-    dbconf['port'] = configdump.get('db_port')
-    dbconf['dbname'] = configdump.get('db_name')
-    dbconf['api_key'] = configdump.get('api_key')
-    dbconf['api_url'] = configdump.get('api_url', API_URL)
-
-    if not dbconf['dbname'] and dbconf['api_key']:
-        logger.error(
-            "Missing database name and/or api key in configfile %s, perhaps create one with --generate-config?" % configfile)
-        sys.exit(1)
-
-
-def write_config():
-
-    apikey = option['apikey'] if option['apikey'] is not None else 'fill_me_in'
-
-    sample_config = '''[pganalyze]
-api_key: %s
-db_name: fill_me_in
-#db_username:
-#db_password:
-#db_host: localhost
-#db_port: 5432
-#api_url: %s
-''' % (apikey, API_URL)
-
-    cf = option['configfile'][0]
-
-    try:
-        f = os.open(cf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0600)
-        os.write(f, sample_config)
-        os.close(f)
-    except Exception as e:
-        logger.error("Failed to write configfile: %s" % e)
-        sys.exit(1)
-    logger.info("Wrote standard configuration to %s, please edit it and then run the script again" % cf)
 
 
 def fetch_system_information():
@@ -389,27 +281,25 @@ def fetch_query_information():
 
 
 def main():
-    global option, logger
+    global option, logger, dbconf
 
     option = parse_options()
     logger = configure_logger()
 
+    c = Configuration(option)
+
     if option['generate_config']:
-        write_config()
+        c.write()
         sys.exit(0)
-    
-    if ON_HEROKU:
-        read_heroku_config()
-        option['systeminformation'] = False
-    else:
-        read_config()
+
+    dbconf = c.read()
 
     check_database()
 
     data = {}
     (option['query_source'], data['queries']) = fetch_query_information()
 
-    if option['systeminformation']:
+    if option['systeminformation'] and not SystemInformation().on_heroku:
         data['system'] = fetch_system_information()
 
     data['postgres'] = fetch_postgres_information()

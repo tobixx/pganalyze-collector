@@ -12,9 +12,14 @@ logger = logging.getLogger(__name__)
 
 
 class SystemInformation():
-    def __init__(self, db):
+    def __init__(self, db=None):
         self.system = platform.system()
         self.db = db
+
+    @property
+    def on_heroku(self):
+        """ Are we running on heroku?"""
+        return 'DYNO' in os.environ
 
     def OS(self):
         osinfo = {}
@@ -56,7 +61,8 @@ class SystemInformation():
 
         return (result)
 
-    def _fetch_linux_cpu_data(self):
+    @staticmethod
+    def _fetch_linux_cpu_data():
 
         with open('/proc/stat', 'r') as f:
             procstat = f.readlines()
@@ -66,7 +72,8 @@ class SystemInformation():
 
         return procstat, cpuinfo
 
-    def _parse_linux_cpu_procstat(self, procstat):
+    @staticmethod
+    def _parse_linux_cpu_procstat(procstat):
 
         # Fetch combined CPU counter from lines
         os_counters = filter(lambda x: x.find('cpu ') == 0, procstat)[0]
@@ -83,7 +90,8 @@ class SystemInformation():
 
         return dict(zip(os_counter_names, os_counters))
 
-    def _parse_linux_cpu_cpuinfo(self, cpuinfo):
+    @staticmethod
+    def _parse_linux_cpu_cpuinfo(cpuinfo):
 
         # Trim excessive whitespace in strings, return two elements per line
         cpuinfo = map(lambda x: " ".join(x.split()).split(' : '), cpuinfo)
@@ -103,7 +111,7 @@ class SystemInformation():
             hardware['cores_per_socket'] = next(int(l[1]) for l in cpuinfo if l[0] == 'cpu cores')
         except StopIteration:
             # Fallthrough - we didn't find cpu cores stanza
-           pass
+            pass
 
         # We didn't get cpu core identifiers, just use the count of processors
         if not 'cores_per_socket' in hardware:
@@ -219,7 +227,8 @@ class SystemInformation():
 
         return result
 
-    def _find_mount_point(self, path):
+    @staticmethod
+    def _find_mount_point(path):
         path = os.path.abspath(path)
         while not os.path.ismount(path):
             path = os.path.dirname(path)
