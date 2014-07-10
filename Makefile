@@ -1,7 +1,12 @@
 MYNAME=pganalyze-collector
 PKGVER := $(shell git describe --tags)
 ZIPNAME := $(MYNAME)-$(PKGVER).zip
-buildpackage = fpm --verbose -s dir -t $(1) -a all -n $(MYNAME) -v $(PKGVER) ./build/opt/.=/opt/$(MYNAME) ./build/$(MYNAME)=/usr/bin/$(MYNAME)
+DEPENDENCIES := -d python -d python-psycopg2
+buildpackage = fpm --verbose -s dir -t $(1) -a all -n $(MYNAME) -v $(PKGVER) $(DEPENDENCIES)\
+	       -m "<team@pganalyze.com>" --url "https://pganalyze.com/"\
+	       --description "pganalyze collector script"\
+	       --vendor "pganalyze" --license="BSD"\
+	       ./build/opt/.=/opt/$(MYNAME) ./build/$(MYNAME)=/usr/bin/$(MYNAME)
 
 SHIPME=LICENSE pganalyze-collector.py vendor pgacollector CHANGELOG.md
 
