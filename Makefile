@@ -3,17 +3,17 @@ PKGVER := $(shell git describe --tags)
 ZIPNAME := $(MYNAME)-$(PKGVER).zip
 buildpackage = fpm --verbose -s dir -t $(1) -a all -n $(MYNAME) -v $(PKGVER) ./build/opt/.=/opt/$(MYNAME) ./build/$(MYNAME)=/usr/bin/$(MYNAME)
 
-SHIPME=LICENSE pganalyze-collector.py vendor pgacollector 
+SHIPME=LICENSE pganalyze-collector.py vendor pgacollector CHANGELOG.md
 
 all: deb rpm zip
 
 
 deb: build
-	$(call buildpackage, deb)
+	$(call buildpackage,deb)
 
 
 rpm: build
-	$(call buildpackage, rpm)
+	$(call buildpackage,rpm)
 
 
 zip: build
