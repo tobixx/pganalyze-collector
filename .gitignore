@@ -2,3 +2,8 @@
 
 # pycharm
 .idea/
+
+# build stuff
+build/
+*.deb
+*.rpm
