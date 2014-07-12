@@ -94,7 +94,10 @@ def parse_options(print_help=False):
                       help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
     parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
                       default=True,
-                      help='Don\'t collect OS level performance data'),
+                      help='Don\'t collect OS level performance data')
+    parser.add_option('--no-settings', action='store_false', dest='collect_postgres_settings',
+                      default=True,
+                      help='Don\'t collect Postgres settings information')
 
     if print_help:
         parser.print_help()
@@ -205,7 +208,8 @@ def fetch_postgres_information():
     # Populate result dictionary
     info['schema']   = schema.values()
     info['version']  = PI.version()
-    info['settings'] = PI.settings()
+    if option['collect_postgres_settings']:
+        info['settings'] = PI.settings()
     info['bgwriter'] = PI.bgwriter_stats()
     info['database'] = PI.db_stats()
     info['locks']    = PI.locks()
@@ -231,6 +235,7 @@ def post_data_to_web(data):
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
     to_post['query_parameters'] = option['queryparameters']
     to_post['system_information'] = option['systeminformation']
+    to_post['has_postgres_settings'] = option['collect_postgres_settings']
     to_post['query_source'] = option['query_source']
 
     if option['dryrun']:
