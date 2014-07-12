@@ -27,6 +27,7 @@ FROM pg_catalog.pg_class c
 LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
 WHERE c.relkind = 'r'
+  AND c.relpersistence <> 't'
   AND n.nspname <> 'pg_catalog'
   AND n.nspname <> 'information_schema'
   AND n.nspname !~ '^pg_toast'
@@ -65,6 +66,7 @@ LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid
                                            AND conindid = i.indexrelid
                                            AND contype IN ('p', 'u', 'x'))
 WHERE c.relkind = 'r'
+  AND c.relpersistence <> 't'
   AND n.nspname <> 'pg_catalog'
   AND n.nspname <> 'information_schema'
   AND n.nspname !~ '^pg_toast'
