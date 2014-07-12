@@ -142,7 +142,8 @@ import pg8000.core
 # @return An instance of {@link #ConnectionWrapper ConnectionWrapper}.
 def connect(
         user, host='localhost', unix_sock=None, port=5432, database=None,
-        password=None, socket_timeout=60, ssl=False):
+        password=None, socket_timeout=60, ssl=False, **kwargs):
+
     return pg8000.core.Connection(
         user, host, unix_sock, port, database, password, socket_timeout, ssl)
 
@@ -220,28 +221,12 @@ def Binary(value):
     else:
         return value
 
-try:
-    from pytz import utc
-except ImportError:
-    ZERO = datetime.timedelta(0)
-
-    class UTC(datetime.tzinfo):
-
-        def utcoffset(self, dt):
-            return ZERO
-
-        def tzname(self, dt):
-            return "UTC"
-
-        def dst(self, dt):
-            return ZERO
-    utc = UTC()
-
 
 # For compatibility with 1.8
 import pg8000 as dbapi
 DBAPI = dbapi
 pg8000_dbapi = DBAPI
+from pg8000.core import utc
 
 from pg8000.errors import (
     Warning, DatabaseError, InterfaceError,
@@ -255,4 +240,4 @@ __all__ = [
     CopyQueryOrTableRequiredError, Error, OperationalError, IntegrityError,
     InternalError, NotSupportedError, ArrayContentNotHomogenousError,
     ArrayContentEmptyError, ArrayDimensionsNotConsistentError,
-    ArrayContentNotSupportedError]
+    ArrayContentNotSupportedError, utc]
