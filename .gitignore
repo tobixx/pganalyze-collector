@@ -8,3 +8,7 @@ build/
 *.deb
 *.rpm
 *.zip
+
+# OSX stuff
+.DS_store
+
