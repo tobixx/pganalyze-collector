@@ -53,7 +53,7 @@ from pgacollector.Configuration import Configuration
 from pprint import pprint
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.5.1-dev'
+VERSION = '0.6.0'
 API_URL = 'https://pganalyze.com/queries'
 dbconf = {}
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## dev	unreleased
+## 0.6.0    2014-07-18
 
 Features & improvements:
 
