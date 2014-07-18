@@ -299,7 +299,11 @@ def main():
     check_database()
 
     data = {}
-    (option['query_source'], data['queries']) = fetch_query_information()
+    if option['queryparameters']:
+        (option['query_source'], data['queries']) = fetch_query_information()
+    else:
+        option['query_source'] = False
+        data['queries'] = []
 
     if option['systeminformation'] and not SystemInformation().on_heroku:
         data['system'] = fetch_system_information()
