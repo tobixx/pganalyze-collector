@@ -33,17 +33,8 @@ class DB():
         self.conn = self._connect(dbname, username, password, host, port)
         logger.debug("Connected to database")
 
-        # Convert decimal values to float since JSON can't handle Decimals
-        if pg.__name__ == 'pg8000':
-            self._pg8000_numeric_in = self.conn.pg_types[1700][1]
-            self.conn.pg_types[1700] = (pg.core.FC_TEXT, self._pg8000_float_numeric_wrapper)
-
-        if pg.__name__ == 'psycopg2':
-            dec2float = pg.extensions.new_type(
-                pg.extensions.DECIMAL.values,
-                'DEC2FLOAT',
-                lambda value, curs: float(value) if value is not None else None)
-            pg.extensions.register_type(dec2float)
+        self._register_pg_type_wrappers()
+        self.version_numeric = int(self.run_query('SHOW server_version_num')[0]['server_version_num'])
 
     def run_query(self, query, should_raise=False):
         # pg8000 is picky regarding % characters in query strings, escaping with extreme prejudice
@@ -85,7 +76,8 @@ class DB():
     def _pg8000_float_numeric_wrapper(self, data, offset, length):
         return float(self._pg8000_numeric_in(data, offset, length))
 
-    def _connect(self, dbname, username, password, host, port):
+    @staticmethod
+    def _connect(dbname, username, password, host, port):
         try:
             kw = {
                 'database': dbname,
@@ -104,3 +96,17 @@ class DB():
         except Exception as e:
             logger.error("Failed to connect to database: %s", str(e))
             sys.exit(1)
+
+    def _register_pg_type_wrappers(self):
+
+        # Convert decimal values to float since JSON can't handle Decimals
+        if pg.__name__ == 'pg8000':
+            self._pg8000_numeric_in = self.conn.pg_types[1700][1]
+            self.conn.pg_types[1700] = (pg.core.FC_TEXT, self._pg8000_float_numeric_wrapper)
+
+        if pg.__name__ == 'psycopg2':
+            dec2float = pg.extensions.new_type(
+                pg.extensions.DECIMAL.values,
+                'DEC2FLOAT',
+                lambda value, curs: float(value) if value is not None else None)
+            pg.extensions.register_type(dec2float)

@@ -9,7 +9,7 @@ class PostgresInformation():
     def __init__(self, db):
         self.db = db
 
-    def Columns(self):
+    def columns(self):
         query = """
 SELECT n.nspname AS schema,
        c.relname AS table,
@@ -42,8 +42,7 @@ ORDER BY n.nspname,
         result = self.db.run_query(query)
         return result
 
-
-    def Indexes(self):
+    def indexes(self):
         """ Fetch information about indexes
 
         """
@@ -85,9 +84,9 @@ ORDER BY n.nspname,
         for row in result:
             # We need to convert the Postgres legacy int2vector to an int[]
             row['columns'] = map(int, str(row['columns']).split())
-        return (result)
+        return result
 
-    def Constraints(self):
+    def constraints(self):
         """
 
 
@@ -118,7 +117,7 @@ ORDER BY n.nspname,
         #FIXME: This probably misses check constraints and others?
         return self.db.run_query(query)
 
-    def Triggers(self):
+    def triggers(self):
 
         #FIXME: Needs to be implemented
         query = """
@@ -128,10 +127,10 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
         ORDER BY 1
 """
 
-    def Version(self):
+    def version(self):
         return self.db.run_query("SELECT VERSION()")[0]['version']
 
-    def TableStats(self):
+    def table_stats(self):
         query = "SELECT * FROM pg_stat_user_tables s JOIN pg_statio_user_tables sio ON s.relid = sio.relid"
         result = self.db.run_query(query)
 
@@ -140,10 +139,9 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
             row['table'] = row.pop('relname')
             row['schema'] = row.pop('schemaname')
 
-        return (result)
+        return result
 
-
-    def IndexStats(self):
+    def index_stats(self):
         query = "SELECT * FROM pg_stat_user_indexes s JOIN pg_statio_user_indexes sio ON s.indexrelid = sio.indexrelid"
         result = self.db.run_query(query)
 
@@ -154,9 +152,9 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
             row['schema'] = row.pop('schemaname')
             row['index'] = row.pop('indexrelname')
 
-        return (result)
+        return result
 
-    def Bloat(self):
+    def bloat(self):
         """Fetch table & index bloat from database
 
 This query has been lifted from check_postgres by Greg Sabino Mullane,
@@ -235,20 +233,19 @@ FROM (
   LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid
 ) AS sml
 '''
-        #FIXME: Can we remove this hackaround?
-#        if pg.__name__ == 'pg8000': query = query.replace('%', '%%') # pg8000 thinks its a format string
+
         result = self.db.run_query(query)
         return result
 
-    def BGWriterStats(self):
+    def bgwriter_stats(self):
         query = "SELECT * FROM pg_stat_bgwriter"
         return self.db.run_query(query)
 
-    def DBStats(self):
+    def db_stats(self):
         query = "SELECT * FROM pg_stat_database WHERE datname = current_database()"
         return self.db.run_query(query)
 
-    def Settings(self):
+    def settings(self):
         query = "SELECT name, setting, unit, boot_val, reset_val, source, sourcefile, sourceline FROM pg_settings"
         result = self.db.run_query(query)
 
@@ -259,12 +256,11 @@ FROM (
 
         return result
 
-    def Backends(self, send_query_information):
-        pre92 = int(self.db.run_query('SHOW server_version_num')[0]['server_version_num']) < 90200
+    def backends(self, send_query_information):
+        pre92 = self.db.version_numeric < 90200
 
         querycolumns = 'datname AS database, usename AS username, application_name, client_addr::text,' \
                        ' client_hostname, client_port, backend_start, xact_start, query_start, waiting'
-
 
         pre92_columns = ", procpid AS pid, current_query AS query"
         post92_columns = ", pid, query, state"
@@ -276,7 +272,6 @@ FROM (
         result = self.db.run_query(query)
 
         for row in result:
-
 
             # Fake state column for pre-9.2 versions
             if pre92:
@@ -297,7 +292,7 @@ FROM (
 
         return result
 
-    def Locks(self):
+    def locks(self):
         query = """
 SELECT d.datname AS database,
        n.nspname AS schema,

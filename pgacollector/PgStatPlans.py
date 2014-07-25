@@ -3,6 +3,7 @@
 
 import logging
 import re
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,9 @@ class PgStatPlans():
 
     def __init__(self, db):
         self.db = db
-
+        if db.version_numeric < 90100:
+            logger.error("To use pg_stat_plans you must have at least Postgres 9.1 or newer")
+            sys.exit(1)
 
     def fetch_queries(self, send_query_parameters):
         both_fields = ["userid", "dbid",

@@ -65,10 +65,6 @@ def check_database():
         logger.error("User %s isn't a superuser" % dbconf['username'])
         sys.exit(1)
 
-    if not db.run_query('SHOW server_version_num')[0]['server_version_num'] >= 90100:
-        logger.error("You must be running PostgreSQL 9.1 or newer")
-        sys.exit(1)
-
 
 def parse_options(print_help=False):
     parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
@@ -122,7 +118,6 @@ def configure_logger():
     return logtemp
 
 
-
 def fetch_system_information():
     SI = SystemInformation(db)
     info = {}
@@ -151,17 +146,17 @@ def fetch_postgres_information():
     tablestats = {}
 
     #Prepare stats for later merging
-    for row in PI.IndexStats():
+    for row in PI.index_stats():
         del row['table']
         indexkey = '.'.join([row.pop('schema'), row.pop('index')])
         indexstats[indexkey] = row
 
-    for row in PI.TableStats():
+    for row in PI.table_stats():
         tablekey = '.'.join([row.pop('schema'), row.pop('table')])
         tablestats[tablekey] = row
 
     # Merge Table & Index bloat information into table/indexstats dicts
-    for row in PI.Bloat():
+    for row in PI.bloat():
         tablekey = '.'.join([row.get('schemaname'), row.pop('tablename')])
         indexkey = '.'.join([row.pop('schemaname'), row.pop('iname')])
         if tablekey in tablestats:
@@ -170,7 +165,7 @@ def fetch_postgres_information():
             indexstats[indexkey]['wasted_bytes'] = row['wastedibytes']
 
     # Combine Table, Index and Constraint information into a combined schema dict
-    for row in PI.Columns():
+    for row in PI.columns():
         tablekey = '.'.join([row['schema'], row['table']])
         if not tablekey in schema:
             schema[tablekey] = {}
@@ -184,7 +179,7 @@ def fetch_postgres_information():
             schema[tablekey]['columns'] = []
         schema[tablekey]['columns'].append(row)
 
-    for row in PI.Indexes():
+    for row in PI.indexes():
         statskey = '.'.join([row['schema'], row['name']])
         tablekey = '.'.join([row.pop('schema'), row.pop('table')])
 
@@ -195,7 +190,7 @@ def fetch_postgres_information():
             schema[tablekey]['indices'] = []
         schema[tablekey]['indices'].append(row)
 
-    for row in PI.Constraints():
+    for row in PI.constraints():
         tablekey = '.'.join([row.pop('schema'), row.pop('table')])
         if not 'constraints' in schema[tablekey]:
             schema[tablekey]['constraints'] = []
@@ -204,12 +199,12 @@ def fetch_postgres_information():
 
     # Populate result dictionary
     info['schema']   = schema.values()
-    info['version']  = PI.Version()
-    info['settings'] = PI.Settings()
-    info['bgwriter'] = PI.BGWriterStats()
-    info['database'] = PI.DBStats()
-    info['locks']    = PI.Locks()
-    info['backends'] = PI.Backends(option['queryparameters'])
+    info['version']  = PI.version()
+    info['settings'] = PI.settings()
+    info['bgwriter'] = PI.bgwriter_stats()
+    info['database'] = PI.db_stats()
+    info['locks']    = PI.locks()
+    info['backends'] = PI.backends(option['queryparameters'])
 
     return info
 
