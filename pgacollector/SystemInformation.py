@@ -2,10 +2,8 @@
 #  All rights reserved.
 
 import logging
-import re
 import platform
 import os
-import subprocess
 
 
 logger = logging.getLogger(__name__)
@@ -21,9 +19,10 @@ class SystemInformation():
         """ Are we running on heroku?"""
         return 'DYNO' in os.environ
 
-    def OS(self):
+    def os(self):
         osinfo = {}
         osinfo['system'] = platform.system()
+
         if self.system == 'Linux':
             (osinfo['distribution'], osinfo['distribution_version']) = platform.linux_distribution()[0:2]
         elif self.system == 'Darwin':
@@ -33,21 +32,19 @@ class SystemInformation():
         osinfo['architecture'] = platform.machine()
         osinfo['kernel_version'] = platform.release()
 
-        # FIXME: Refactor to use /sys/devices/virtual/dmi/id/{sys_vendor,product_name}
-        dmidecode = find_executable_in_path('dmidecode')
-        if dmidecode:
-            try:
-                vendor = subprocess.check_output([dmidecode, '-s', 'system-manufacturer']).strip()
-                model = subprocess.check_output([dmidecode, '-s', 'system-product-name']).strip()
-                if vendor and model:
-                    osinfo['server_model'] = "%s %s" % (vendor, model)
-
-            except Exception as e:
-                logger.debug("Error while collecting system manufacturer/model via dmidecode: %s" % e)
+        try:
+            with open('/sys/devices/virtual/dmi/id/sys_vendor', 'r') as f:
+                vendor = f.readline().strip()
+            with open('/sys/devices/virtual/dmi/id/product_name', 'r') as f:
+                model = f.readline().strip()
+            if vendor and model:
+                osinfo['server_model'] = "%s %s" % (vendor, model)
+        except Exception as e:
+            logger.debug("Error while collecting sys_vendor/product_name from sysfs: %s" % e)
 
         return osinfo
 
-    def CPU(self):
+    def cpu(self):
         result = {}
 
         if self.system == 'Linux':
@@ -123,7 +120,7 @@ class SystemInformation():
 
         return hardware
 
-    def Scheduler(self):
+    def scheduler(self):
         result = {}
         if self.system != 'Linux': return None
 
@@ -149,7 +146,7 @@ class SystemInformation():
 
         return result
 
-    def Storage(self):
+    def storage(self):
         result = {}
 
         if self.system != 'Linux':
@@ -195,9 +192,9 @@ class SystemInformation():
 
             result['hardware'] = " ".join(vendor, model)
 
-        return ([result])
+        return [result]
 
-    def Memory(self):
+    def memory(self):
         result = {}
 
         if self.system != 'Linux': return None

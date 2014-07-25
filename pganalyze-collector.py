@@ -50,10 +50,8 @@ from pgacollector.DB import DB
 from pgacollector.Configuration import Configuration
 
 
-from pprint import pprint
-
 MYNAME = 'pganalyze-collector'
-VERSION = '0.6.0'
+VERSION = '0.6.1-dev'
 API_URL = 'https://pganalyze.com/queries'
 dbconf = {}
 
@@ -129,11 +127,11 @@ def fetch_system_information():
     SI = SystemInformation(db)
     info = {}
 
-    info['os'] = SI.OS()
-    info['cpu'] = SI.CPU()
-    info['scheduler'] = SI.Scheduler()
-    info['storage'] = SI.Storage()
-    info['memory'] = SI.Memory()
+    info['os'] = SI.os()
+    info['cpu'] = SI.cpu()
+    info['scheduler'] = SI.scheduler()
+    info['storage'] = SI.storage()
+    info['memory'] = SI.memory()
 
     return info
 
@@ -321,4 +319,5 @@ def main():
         logger.error("Rejected by server: %s" % output)
 
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    main()

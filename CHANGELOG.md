@@ -1,5 +1,12 @@
 # Changelog
 
+## dev      unreleased
+
+Fixes:
+
+* Drop dmidecode dependency to gather server vendor/model on Linux
+
+
 ## 0.6.0    2014-07-18
 
 Features & improvements:
