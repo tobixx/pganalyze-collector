@@ -1,10 +1,11 @@
 # Changelog
 
-## dev      unreleased
+## 0.6.1    2014-07-26
 
 Fixes:
 
 * Drop dmidecode dependency to gather server vendor/model on Linux
+* Fix whitespace in generated configuration file
 
 
 ## 0.6.0    2014-07-18

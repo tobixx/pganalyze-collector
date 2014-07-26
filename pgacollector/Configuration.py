@@ -107,14 +107,14 @@ class Configuration():
         apikey = self.option['apikey'] if self.option['apikey'] is not None else 'fill_me_in'
 
         sample_config = '''[pganalyze]
-    api_key: %s
-    db_name: fill_me_in
-    #db_username:
-    #db_password:
-    #db_host: localhost
-    #db_port: 5432
-    #api_url: %s
-    ''' % (apikey, self.option['api_url'])
+api_key: %s
+db_name: fill_me_in
+#db_username:
+#db_password:
+#db_host: localhost
+#db_port: 5432
+#api_url: %s
+''' % (apikey, self.option['api_url'])
 
         cf = self.option['configfile'][0]
 
