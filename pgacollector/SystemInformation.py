@@ -190,7 +190,7 @@ class SystemInformation():
             with open(sysfs_device_path + 'device/model', 'r') as f:
                 model = f.readline().strip()
 
-            result['hardware'] = " ".join(vendor, model)
+            result['hardware'] = " ".join([vendor, model])
 
         return [result]
 
