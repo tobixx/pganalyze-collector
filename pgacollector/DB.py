@@ -37,7 +37,7 @@ class DB():
         self._register_pg_type_wrappers()
         self.version_numeric = int(self.run_query('SHOW server_version_num')[0]['server_version_num'])
 
-    def run_query(self, query, should_raise=False):
+    def run_query(self, query, should_raise=False, commit=False):
         # pg8000 is picky regarding % characters in query strings, escaping with extreme prejudice
         if db_driver == 'pg8000' and '%' in query:
             logger.debug("Escaping % characters in query string")
@@ -52,6 +52,9 @@ class DB():
 
         try:
             cur.execute(query)
+
+            if commit:
+                self.conn.commit()
         except Exception as e:
             if should_raise:
                 raise e

@@ -270,8 +270,9 @@ def fetch_query_information():
         logger.debug("Found pg_stat_statements, using it for query information")
         return ['pg_stat_statements', PgStatStatements(db).fetch_queries()]
     else:
-        logger.error("Couldn't find either pg_stat_plans or pg_stat_statements, aborting")
-        sys.exit(1)
+        logger.debug("Trying to enable pg_stat_statements...")
+        db.run_query("CREATE EXTENSION IF NOT EXISTS pg_stat_statements", commit = True)
+        return ['pg_stat_statements', PgStatStatements(db).fetch_queries()]
 
 
 def main():
