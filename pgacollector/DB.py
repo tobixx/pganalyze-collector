@@ -7,38 +7,39 @@ import sys
 
 logger = logging.getLogger(__name__)
 
+db_driver = None
 
-while True:
-    try:
-        import psycopg2 as pg
-        break
-    except Exception as e:
-        pass
+try:
+    import psycopg2 as pg
+    db_driver = 'psycopg'
+except Exception as e:
+    pass
 
+if db_driver == None:
     try:
         import pg8000 as pg
-        break
+        db_driver = 'pg8000'
     except Exception as e:
         pass
 
+if db_driver == None:
     print("*** Couldn't import database driver")
     print("*** Please install the python-psycopg2 package or the pg8000 module")
     sys.exit(1)
-
 
 class DB():
 
     def __init__(self, dbname, querymarker, username=None, password=None, host=None, port=None):
         self.querymarker = '/* ' + querymarker + ' */'
         self.conn = self._connect(dbname, username, password, host, port)
-        logger.debug("Connected to database")
+        logger.debug("Connected to database using %s driver" % db_driver)
 
         self._register_pg_type_wrappers()
         self.version_numeric = int(self.run_query('SHOW server_version_num')[0]['server_version_num'])
 
     def run_query(self, query, should_raise=False):
         # pg8000 is picky regarding % characters in query strings, escaping with extreme prejudice
-        if pg.__name__ == 'pg8000' and '%' in query:
+        if db_driver == 'pg8000' and '%' in query:
             logger.debug("Escaping % characters in query string")
             query = query.replace('%', '%%')
 
