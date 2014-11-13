@@ -253,10 +253,9 @@ def post_data_to_web(data):
             code = 'exception'
 
         num_tries += 1
-        # FIXME: Fail fast on wrong API key
-        if code == 200 or num_tries >= 3:
+        if code == 200 or message == 'ERROR: Invalid API key' or num_tries >= 3:
             return message,code
-        logger.debug("Got %s while posting data: %s, sleeping 60 seconds then trying again" % (code, message))
+        logger.info("Got %s while posting data: %s, sleeping 60 seconds then trying again" % (code, message))
         time.sleep(60)
 
 
