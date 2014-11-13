@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2    2014-11-13
+
+Fixes:
+
+* CREATE EXTENSION IF NOT EXISTS pg_stat_statements
+* Auto-detect Amazon Web Service DB hosts as remote
+
+
 ## 0.6.1    2014-07-26
 
 Fixes:
@@ -43,7 +51,7 @@ Fixes:
 
 
 ## 0.3.1	2013-07-23
- 
+
 * Collecting more Postgres Information
   * GUCs (configuration settings)
   * BGWriter

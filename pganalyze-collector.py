@@ -51,7 +51,7 @@ from pgacollector.Configuration import Configuration
 
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.6.1'
+VERSION = '0.6.2'
 API_URL = 'https://pganalyze.com/queries'
 dbconf = {}
 
