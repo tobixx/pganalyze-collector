@@ -16,7 +16,7 @@
 # * Neither the name of pganalyze nor the names of its contributors may be used
 # to endorse or promote products derived from this software without specific
 # prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -56,15 +56,19 @@ API_URL = 'https://pganalyze.com/queries'
 dbconf = {}
 
 
-def check_database():
-    global db
-    db = DB(querymarker=MYNAME, host=dbconf['host'], port=dbconf['port'], username=dbconf['username'],
-            password=dbconf['password'], dbname=dbconf['dbname'])
+def setup_database():
+    return DB(querymarker=MYNAME, host=dbconf['host'], port=dbconf['port'], username=dbconf['username'],
+              password=dbconf['password'], dbname=dbconf['dbname'])
 
-    if not SystemInformation().on_heroku and not db.run_query('SHOW is_superuser')[0]['is_superuser'] == 'on':
+def check_db_superuser():
+    global db
+    if db.run_query('SHOW is_superuser')[0]['is_superuser'] != 'on':
         logger.error("User %s isn't a superuser" % dbconf['username'])
         sys.exit(1)
 
+def is_remote_system():
+    global dbconf
+    return re.search('amazonaws.com$', dbconf['host']) != None or SystemInformation().on_heroku
 
 def parse_options(print_help=False):
     parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
@@ -276,7 +280,7 @@ def fetch_query_information():
 
 
 def main():
-    global option, logger, dbconf
+    global option, logger, dbconf, db
 
     option = parse_options()
     logger = configure_logger()
@@ -288,13 +292,17 @@ def main():
         sys.exit(0)
 
     dbconf = c.read()
+    db     = setup_database()
 
-    check_database()
+    if is_remote_system():
+        option['systeminformation'] = False
+    else:
+        check_db_superuser()
 
     data = {}
     (option['query_source'], data['queries']) = fetch_query_information()
 
-    if option['systeminformation'] and not SystemInformation().on_heroku:
+    if option['systeminformation']:
         data['system'] = fetch_system_information()
 
     data['postgres'] = fetch_postgres_information()
