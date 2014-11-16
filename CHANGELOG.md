@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3    2014-11-16
+
+Re-release to fix build issues
+
+
 ## 0.6.2    2014-11-13
 
 Fixes:
