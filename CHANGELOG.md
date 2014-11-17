@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4    2014-11-17
+
+Fixes:
+
+* Do not require dbhost to be set
+
+
 ## 0.6.3    2014-11-16
 
 Re-release to fix build issues
