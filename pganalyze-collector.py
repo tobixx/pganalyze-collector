@@ -68,7 +68,8 @@ def check_db_superuser():
 
 def is_remote_system():
     global dbconf
-    return re.search('amazonaws.com$', dbconf['host']) != None or SystemInformation().on_heroku
+    is_awshost = dbconf['host'] != None and re.search('amazonaws.com$', dbconf['host']) != None
+    return is_awshost or SystemInformation().on_heroku
 
 def parse_options(print_help=False):
     parser = OptionParser(usage="%s [options]" % MYNAME, version="%s %s" % (MYNAME, VERSION))
