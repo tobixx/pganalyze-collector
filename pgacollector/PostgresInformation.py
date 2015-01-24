@@ -38,6 +38,7 @@ ORDER BY n.nspname,
          a.attnum;
 """
         #FIXME: toast handling, table inheritance
+        #FIXME: We don't need to collect tablesize here, rather collect it down in TableStats
 
         result = self.db.run_query(query)
         return result
@@ -131,13 +132,43 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
         return self.db.run_query("SELECT VERSION()")[0]['version']
 
     def table_stats(self):
-        query = "SELECT * FROM pg_stat_user_tables s JOIN pg_statio_user_tables sio ON s.relid = sio.relid"
+        query = """
+SELECT s.*,
+       sio.*,
+       c.relpages,
+       c.reltuples,
+       c.relallvisible
+  FROM pg_stat_user_tables s
+  JOIN pg_statio_user_tables sio ON (s.relid = sio.relid)
+  JOIN pg_class c ON (s.relid = c.oid)
+"""
         result = self.db.run_query(query)
 
         for row in result:
             del row['relid']
             row['table'] = row.pop('relname')
             row['schema'] = row.pop('schemaname')
+
+        return result
+
+    def column_stats(self):
+        query = """
+ SELECT n.nspname, c.relname, a.attname,
+        s.*
+   FROM pg_statistic s
+   JOIN pg_class c ON c.oid = s.starelid
+   JOIN pg_attribute a ON c.oid = a.attrelid AND a.attnum = s.staattnum
+   LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE NOT a.attisdropped AND has_column_privilege(c.oid, a.attnum, 'select'::text)
+"""
+        result = self.db.run_query(query)
+
+        for row in result:
+            del row['starelid']
+            del row['staattnum']
+            row['schema'] = row.pop('nspname')
+            row['table'] = row.pop('relname')
+            row['column'] = row.pop('attname')
 
         return result
 

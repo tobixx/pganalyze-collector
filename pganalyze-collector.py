@@ -152,6 +152,7 @@ def fetch_postgres_information():
 
     indexstats = {}
     tablestats = {}
+    columnstats = {}
 
     #Prepare stats for later merging
     for row in PI.index_stats():
@@ -162,6 +163,10 @@ def fetch_postgres_information():
     for row in PI.table_stats():
         tablekey = '.'.join([row.pop('schema'), row.pop('table')])
         tablestats[tablekey] = row
+
+    for row in PI.column_stats():
+        columnkey = '.'.join([row.pop('schema'), row.pop('table'), row.pop('column')])
+        columnstats[columnkey] = row
 
     # Merge Table & Index bloat information into table/indexstats dicts
     for row in PI.bloat():
@@ -174,6 +179,9 @@ def fetch_postgres_information():
 
     # Combine Table, Index and Constraint information into a combined schema dict
     for row in PI.columns():
+        statskey = '.'.join([row['schema'], row['table'], row['name']])
+        row['stats'] = columnstats.get(statskey)
+
         tablekey = '.'.join([row['schema'], row['table']])
         if not tablekey in schema:
             schema[tablekey] = {}
