@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0    UNRELEASED
+
+* Reset-less collector
+  * Calculate the diff on the receiver end for simplicity's sake
+  * Don't run pg_stat_statements_reset() anymore
+  * Remove --no-reset option
+* Add option for disabling collection of postgres lock information
+* Add option for disabling collection of postgres config settings
+* Remove collection of backend pg_stat_activity statistics
+* Remove support for pg_stat_plans, its not supported anymore
+* Remove --no-query-parameters option, its a no-op now
+
+
 ## 0.6.4    2014-11-17
 
 Fixes:

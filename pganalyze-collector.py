@@ -86,11 +86,12 @@ def parse_options(print_help=False):
                       help='Suppress all non-warning output during normal operation')
     parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
                       help='Print JSON data that would get sent to web service and exit afterwards.')
-    parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
-                      help='Don\'t reset statistics after posting to web. Only use for testing purposes.')
-    parser.add_option('--no-query-parameters', action='store_false', dest='queryparameters',
+    parser.add_option('--no-postgres-settings', action='store_false', dest='collect_postgres_settings',
                       default=True,
-                      help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
+                      help='Don\'t collect Postgres configuration settings')
+    parser.add_option('--no-postgres-locks', action='store_false', dest='collect_postgres_locks',
+                      default=True,
+                      help='Don\'t collect Postgres lock information')
     parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
                       default=True,
                       help='Don\'t collect OS level performance data'),
@@ -204,11 +205,14 @@ def fetch_postgres_information():
     # Populate result dictionary
     info['schema']   = schema.values()
     info['version']  = PI.version()
-    info['settings'] = PI.settings()
-    info['bgwriter'] = PI.bgwriter_stats()
     info['database'] = PI.db_stats()
-    info['locks']    = PI.locks()
-    info['backends'] = PI.backends(option['queryparameters'])
+    info['bgwriter'] = PI.bgwriter_stats()
+
+    if option['collect_postgres_settings']:
+        info['settings'] = PI.settings()
+
+    if option['collect_postgres_locks']:
+        info['locks']    = PI.locks()
 
     return info
 
@@ -228,9 +232,9 @@ def post_data_to_web(data):
     to_post['api_key'] = dbconf['api_key']
     to_post['collected_at'] = calendar.timegm(time.gmtime())
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
-    to_post['query_parameters'] = option['queryparameters']
     to_post['system_information'] = option['systeminformation']
     to_post['query_source'] = option['query_source']
+    to_post['no_reset'] = True
 
     if option['dryrun']:
         logger.info("Dumping data that would get posted")
@@ -304,13 +308,6 @@ def main():
     if code == 200:
         if not option['quiet']:
             logger.info("Submitted successfully")
-
-        if not option['noreset']:
-            logger.debug("Resetting stats!")
-            if option['query_source'] == 'pg_stat_plans':
-                db.run_query("SELECT pg_stat_plans_reset()")
-            elif option['query_source'] == 'pg_stat_statements':
-                db.run_query("SELECT pg_stat_statements_reset()")
     else:
         logger.error("Rejected by server: %s" % output)
 

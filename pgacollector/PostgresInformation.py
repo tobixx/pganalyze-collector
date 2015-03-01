@@ -256,42 +256,6 @@ FROM (
 
         return result
 
-    def backends(self, send_query_information):
-        pre92 = self.db.version_numeric < 90200
-
-        querycolumns = 'datname AS database, usename AS username, application_name, client_addr::text,' \
-                       ' client_hostname, client_port, backend_start, xact_start, query_start, waiting'
-
-        pre92_columns = ", procpid AS pid, current_query AS query"
-        post92_columns = ", pid, query, state"
-        querycolumns += pre92_columns if pre92 else post92_columns
-
-        pidcol = 'procpid' if pre92 else 'pid'
-
-        query = "SELECT %s FROM pg_stat_activity WHERE %s <> pg_backend_pid()" % (querycolumns, pidcol)
-        result = self.db.run_query(query)
-
-        for row in result:
-
-            # Fake state column for pre-9.2 versions
-            if pre92:
-                if row['query'] == '<IDLE> in transaction':
-                    row['state'] = 'idle in transaction'
-                elif row['query'] == '<IDLE>':
-                    row['state'] = 'idle'
-                else:
-                    row['state'] = 'active'
-
-            # Drop query and client information if query parameter collection is disabled
-            if not send_query_information:
-                logger.debug("Scrubbing private data from pg_stat_activity output")
-                del(row['client_addr'])
-                del(row['client_hostname'])
-                del(row['client_port'])
-                del(row['query'])
-
-        return result
-
     def locks(self):
         query = """
 SELECT d.datname AS database,

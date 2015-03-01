@@ -17,19 +17,7 @@ class PgStatStatements():
             sys.exit(1)
 
     def fetch_queries(self):
-        columns = ["userid", "dbid",
-                   "calls", "rows", "total_time",
-                   "shared_blks_hit", "shared_blks_read", "shared_blks_dirtied", "shared_blks_written",
-                   "local_blks_hit", "local_blks_read", "local_blks_dirtied", "local_blks_written",
-                   "temp_blks_read", "temp_blks_written",
-                   "blk_read_time", "blk_write_time"]
-
-        query = "SELECT query AS normalized_query"
-
-        # Generate list of fields we'e interested in
-        query += ", " + ", ".join(columns)
-
-        query += " FROM pg_stat_statements"
+        query = "SELECT * FROM pg_stat_statements"
 
         # We don't want our stuff in the statistics
         query += " WHERE query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', self.db.querymarker)
@@ -41,7 +29,6 @@ class PgStatStatements():
         queries = []
 
         for row in self.db.run_query(query, False):
-            row['plans'] = []
             queries.append(row)
 
         return queries
