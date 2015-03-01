@@ -43,7 +43,6 @@ import urllib
 import logging
 from optparse import OptionParser
 from pgacollector.PostgresInformation import PostgresInformation
-from pgacollector.PgStatPlans import PgStatPlans
 from pgacollector.PgStatStatements import PgStatStatements
 from pgacollector.SystemInformation import SystemInformation
 from pgacollector.DB import DB
@@ -237,10 +236,6 @@ def post_data_to_web(data):
         logger.info("Dumping data that would get posted")
 
         to_post['data'] = json.loads(to_post['data'])
-        for query in to_post['data']['queries']:
-            for plan in query['plans']:
-                if 'explain' in plan:
-                    plan['explain'] = json.loads(plan['explain'])
         print(json.dumps(to_post, sort_keys=True, indent=4, separators=(',', ': '), cls=DatetimeEncoder))
 
         logger.info("Exiting.")
@@ -268,10 +263,7 @@ def fetch_query_information():
     query = "SELECT extname FROM pg_extension"
 
     extensions = map(lambda q: q['extname'], db.run_query(query))
-    if 'pg_stat_plans' in extensions:
-        logger.debug("Found pg_stat_plans, using it for query information")
-        return ['pg_stat_plans', PgStatPlans(db).fetch_queries(option['queryparameters'])]
-    elif 'pg_stat_statements' in extensions:
+    if 'pg_stat_statements' in extensions:
         logger.debug("Found pg_stat_statements, using it for query information")
         return ['pg_stat_statements', PgStatStatements(db).fetch_queries()]
     else:
