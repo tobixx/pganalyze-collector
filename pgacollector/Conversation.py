@@ -1,8 +1,5 @@
-#!/usr/bin/env python
-
 from colorama import Fore, Back, Style
 import string
-
 
 class Conversation:
 

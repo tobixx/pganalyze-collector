@@ -1,13 +1,8 @@
-# Copyright (c) 2014, pganalyze Team <team@pganalyze.com>
-#  All rights reserved.
-
 import logging
 import platform
 import os
 
-
 logger = logging.getLogger(__name__)
-
 
 class SystemInformation():
     def __init__(self, db=None):

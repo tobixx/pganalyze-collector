@@ -1,9 +1,6 @@
-# Copyright (c) 2014, pganalyze Team <team@pganalyze.com>
-#  All rights reserved.
-
 import logging
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 class PostgresInformation():
     def __init__(self, db):

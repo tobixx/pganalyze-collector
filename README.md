@@ -1,8 +1,6 @@
 pganalyze-collector
 ===================
 
-pganalyze data collector
-
 This is a CLI tool which collects various information about Postgres databases
 as well as queries run on it. All data is converted to a JSON data structure
 which can then be used as data source for monitoring & graphing systems. Or
@@ -23,13 +21,11 @@ It currently collections information about
    * Memory
    * Storage
 
-etc. and will be extended as needed.
-
 
 Installation & Usage
 --------------------
 
-See http://pganalyze.com/docs for installation and usage instructions.
+See https://pganalyze.com/docs for installation and usage instructions.
 
 
 Example output
@@ -39,6 +35,13 @@ To get a feel for the data that is collected you can have a look at the followin
 
  * [Python prettyprinted](https://gist.github.com/terrorobe/7103268)
  * [JSON w/ prettyprinting](https://gist.github.com/terrorobe/7103234)
+
+
+Authors
+-------
+
+ * [Michael Renner](https://github.com/terrorobe)
+ * [Lukas Fittl](https://github.com/lfittl)
 
 
 License

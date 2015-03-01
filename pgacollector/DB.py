@@ -1,9 +1,5 @@
-# Copyright (c) 2014, pganalyze Team <team@pganalyze.com>
-#  All rights reserved.
-
 import logging
 import sys
-
 
 logger = logging.getLogger(__name__)
 

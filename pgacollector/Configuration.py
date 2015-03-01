@@ -1,6 +1,3 @@
-# Copyright (c) 2014, pganalyze Team <team@pganalyze.com>
-#  All rights reserved.
-
 import logging
 import sys
 import urlparse
@@ -10,7 +7,6 @@ from stat import *
 import ConfigParser
 
 logger = logging.getLogger(__name__)
-
 
 class Configuration():
 
