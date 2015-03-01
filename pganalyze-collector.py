@@ -29,12 +29,6 @@ def setup_database():
     return DB(querymarker=MYNAME, host=dbconf['host'], port=dbconf['port'], username=dbconf['username'],
               password=dbconf['password'], dbname=dbconf['dbname'])
 
-def check_db_superuser():
-    global db
-    if db.run_query('SHOW is_superuser')[0]['is_superuser'] != 'on':
-        logger.error("User %s isn't a superuser" % dbconf['username'])
-        sys.exit(1)
-
 def is_remote_system():
     global dbconf
     is_awshost = dbconf['host'] != None and re.search('amazonaws.com$', dbconf['host']) != None
@@ -263,8 +257,6 @@ def main():
 
     if is_remote_system():
         option['systeminformation'] = False
-    else:
-        check_db_superuser()
 
     data = {}
     (option['query_source'], data['queries']) = fetch_query_information()

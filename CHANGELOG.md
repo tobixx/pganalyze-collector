@@ -6,6 +6,9 @@
   * Calculate the diff on the receiver end for simplicity's sake
   * Don't run pg_stat_statements_reset() anymore
   * Remove --no-reset option
+* Restricted privileges
+  * Added support for using a monitoring user (see README)
+  * Removed hard superuser requirement
 * Add option for disabling collection of postgres lock information
 * Add option for disabling collection of postgres config settings
 * Remove collection of backend pg_stat_activity statistics

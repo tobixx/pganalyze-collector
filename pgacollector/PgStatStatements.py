@@ -13,8 +13,22 @@ class PgStatStatements():
             logger.error("To use pg_stat_statements you must have at least Postgres 9.2 or newer")
             sys.exit(1)
 
+    def have_stats_helper(self):
+        query = """
+        SELECT 1 AS enabled
+          FROM pg_proc
+          JOIN pg_namespace ON (pronamespace = pg_namespace.oid)
+         WHERE nspname = 'pganalyze' AND proname = 'get_stat_statements'
+        """
+        return self.db.run_query(query) == [{"enabled": 1}]
+
     def fetch_queries(self):
-        query = "SELECT * FROM pg_stat_statements"
+        query = "SELECT * FROM "
+
+        if self.have_stats_helper():
+            query += "pganalyze.get_stat_statements()"
+        else:
+            query += "pg_stat_statements"
 
         # We don't want our stuff in the statistics
         query += " WHERE query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', self.db.querymarker)
