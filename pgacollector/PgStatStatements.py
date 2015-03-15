@@ -40,6 +40,9 @@ class PgStatStatements():
         queries = []
 
         for row in self.db.run_query(query, False):
+            del row['dbid']
+            del row['userid']
+
             queries.append(row)
 
         return queries
