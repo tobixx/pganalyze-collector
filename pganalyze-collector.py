@@ -58,7 +58,9 @@ def parse_options(print_help=False):
                       help='Don\'t collect Postgres lock information')
     parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
                       default=True,
-                      help='Don\'t collect OS level performance data'),
+                      help='Don\'t collect OS level performance data')
+    parser.add_option('--no-reset', '-n', action='store_true', dest='_dummy_noreset',
+		      help='Dummy option, no-reset is required default since 0.7')
 
     if print_help:
         parser.print_help()
