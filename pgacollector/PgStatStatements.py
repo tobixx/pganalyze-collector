@@ -31,6 +31,8 @@ class PgStatStatements():
         query += " WHERE query !~* '^%s'" % re.sub(r'([*/])', r'\\\1', self.db.querymarker)
         # Filter out queries we shouldn't see in the first place
         query += " AND query <> '<insufficient privilege>'"
+        # Filter out DEALLOCATE statements - they are not useful and consume space
+        query += " AND query NOT LIKE 'DEALLOCATE %'"
         # Only get queries from current database
         query += " AND dbid IN (SELECT oid FROM pg_database WHERE datname = current_database())"
 
