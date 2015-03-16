@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1    2015-03-16
+
+* Improved monitoring user support
+  * Add support for collecting backend info as restricted user
+  * Gracefully fail if we are not superuser
+* psycopg2: Fix bugs, set connection timeout (10s)
+* pg8000: Default to SSL connections, fallback to non-SSL
+
+
 ## 0.7.0    2015-03-16
 
 * Reset-less collector

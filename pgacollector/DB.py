@@ -1,5 +1,6 @@
 import logging
 import sys
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class DB():
                 self.conn.commit()
         except Exception as e:
             if should_raise:
+                self.conn.rollback()
                 raise e
             logger.error("Got an error during query execution")
             for line in str(e).splitlines():
@@ -78,26 +80,26 @@ class DB():
 
     def _connect(self, dbname, username, password, host, port):
         try:
-            kw = {
-                'database': dbname,
-                'user': username,
-                'password': password,
-                'host': host,
-                'port': port
-            }
+            kw = {}
+            kw['host']     = host
+            kw['database'] = dbname
+            kw['user']     = username
 
-            # psycopg2 <= 2.4.2 fails if you pass None arguments, filter them out by hand.
-            kw = dict((key, value) for key, value in kw.iteritems() if value is not None)
-            # pg8000 expects port to be of type integer
-            if 'port' in kw:
-                kw['port'] = int(kw['port'])
+            if password: kw['password'] = password
+            if port:     kw['port']     = int(port)
 
-            try:
-                return self._connect_with_kw(kw)
-            except Exception as e:
-                logger.debug("Failure: %s, retrying with SSL", str(e))
-                kw['ssl'] = True
-                return self._connect_with_kw(kw)
+            if pg.__name__ == 'psycopg2':
+                os.environ['PGCONNECT_TIMEOUT'] = '10'
+
+            if pg.__name__ == 'pg8000':
+                try:
+                    kw['ssl'] = True
+                    return self._connect_with_kw(kw)
+                except Exception as e:
+                    logger.debug("Failure: %s, retrying without SSL", str(e))
+                    del kw['ssl']
+
+            return self._connect_with_kw(kw)
 
         except Exception as e:
             logger.error("Failed to connect to database: %s", str(e))
@@ -116,7 +118,7 @@ class DB():
 
         if pg.__name__ == 'psycopg2':
             dec2float = pg.extensions.new_type(
-                pg.extensions.DECIMAL.values,
+                pg._psycopg.DECIMAL.values,
                 'DEC2FLOAT',
                 lambda value, curs: float(value) if value is not None else None)
             pg.extensions.register_type(dec2float)

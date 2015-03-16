@@ -149,7 +149,11 @@ class SystemInformation():
 
         # FIXME: Collect information for all tablespaces and pg_xlog
 
-        data_directory = self.db.run_query('SHOW data_directory')[0]['data_directory']
+        try:
+            data_directory = self.db.run_query('SHOW data_directory', should_raise=True)[0]['data_directory']
+        except Exception as e:
+            logger.debug("Failure: %s, skipping storage data", str(e))
+            return None
 
         result['name'] = 'PGDATA directory'
         result['path'] = data_directory

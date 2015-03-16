@@ -253,17 +253,30 @@ FROM (
 
         return result
 
+    def have_stat_activity_helper(self):
+        query = """
+        SELECT 1 AS enabled
+          FROM pg_proc
+          JOIN pg_namespace ON (pronamespace = pg_namespace.oid)
+         WHERE nspname = 'pganalyze' AND proname = 'get_stat_activity'
+        """
+        return self.db.run_query(query) == [{"enabled": 1}]
+
     def backends(self):
         # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-ACTIVITY-VIEW
         #
         # Note: We don't include query to avoid sending sensitive data
         query = """
-SELECT pid, usename, application_name, client_addr::text, backend_start,
-       xact_start, query_start, state_change, waiting, state
-  FROM pg_stat_activity
- WHERE pid <> pg_backend_pid()
-       AND datname = current_database()
-"""
+        SELECT pid, usename, application_name, client_addr::text, backend_start,
+               xact_start, query_start, state_change, waiting, state
+        """
+
+        if self.have_stat_activity_helper():
+            query += " FROM pganalyze.get_stat_activity()"
+        else:
+            query += " FROM pg_stat_activity"
+
+        query += " WHERE pid <> pg_backend_pid() AND datname = current_database()"
 
         return self.db.run_query(query)
 
