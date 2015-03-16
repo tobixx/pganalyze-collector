@@ -76,26 +76,36 @@ class DB():
     def _pg8000_float_numeric_wrapper(self, data, offset, length):
         return float(self._pg8000_numeric_in(data, offset, length))
 
-    @staticmethod
-    def _connect(dbname, username, password, host, port):
+    def _connect(self, dbname, username, password, host, port):
         try:
             kw = {
                 'database': dbname,
                 'user': username,
                 'password': password,
                 'host': host,
-                'port': port,
+                'port': port
             }
+
             # psycopg2 <= 2.4.2 fails if you pass None arguments, filter them out by hand.
             kw = dict((key, value) for key, value in kw.iteritems() if value is not None)
             # pg8000 expects port to be of type integer
             if 'port' in kw:
                 kw['port'] = int(kw['port'])
-            logger.debug("Connecting to database, using driver %s, parameters: %s" % (pg.__name__, kw))
-            return pg.connect(**kw)
+
+            try:
+                return self._connect_with_kw(kw)
+            except Exception as e:
+                logger.debug("Failure: %s, retrying with SSL", str(e))
+                kw['ssl'] = True
+                return self._connect_with_kw(kw)
+
         except Exception as e:
             logger.error("Failed to connect to database: %s", str(e))
             sys.exit(1)
+
+    def _connect_with_kw(self, kw):
+        logger.debug("Connecting to database, using driver %s, parameters: %s" % (pg.__name__, kw))
+        return pg.connect(**kw)
 
     def _register_pg_type_wrappers(self):
 
