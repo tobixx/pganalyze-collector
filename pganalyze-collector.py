@@ -1,34 +1,5 @@
 #!/usr/bin/env python
 
-# Copyright (c) 2013, pganalyze Team <team@pganalyze.com>
-#  All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-# * Redistributions of source code must retain the above copyright notice, this
-# list of conditions and the following disclaimer.
-#
-# * Redistributions in binary form must reproduce the above copyright notice,
-# this list of conditions and the following disclaimer in the documentation
-# and/or other materials provided with the distribution.
-#
-# * Neither the name of pganalyze nor the names of its contributors may be used
-# to endorse or promote products derived from this software without specific
-# prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.
-
 # Set up vendor include path
 import sys
 sys.path.insert(1, sys.path[0] + '/vendor/')
@@ -42,29 +13,21 @@ import json
 import urllib
 import logging
 from optparse import OptionParser
+
 from pgacollector.PostgresInformation import PostgresInformation
-from pgacollector.PgStatPlans import PgStatPlans
 from pgacollector.PgStatStatements import PgStatStatements
 from pgacollector.SystemInformation import SystemInformation
 from pgacollector.DB import DB
 from pgacollector.Configuration import Configuration
 
-
 MYNAME = 'pganalyze-collector'
-VERSION = '0.6.4'
+VERSION = '0.7.0'
 API_URL = 'https://pganalyze.com/queries'
 dbconf = {}
-
 
 def setup_database():
     return DB(querymarker=MYNAME, host=dbconf['host'], port=dbconf['port'], username=dbconf['username'],
               password=dbconf['password'], dbname=dbconf['dbname'])
-
-def check_db_superuser():
-    global db
-    if db.run_query('SHOW is_superuser')[0]['is_superuser'] != 'on':
-        logger.error("User %s isn't a superuser" % dbconf['username'])
-        sys.exit(1)
 
 def is_remote_system():
     global dbconf
@@ -87,14 +50,17 @@ def parse_options(print_help=False):
                       help='Suppress all non-warning output during normal operation')
     parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
                       help='Print JSON data that would get sent to web service and exit afterwards.')
-    parser.add_option('--no-reset', '-n', action='store_true', dest='noreset',
-                      help='Don\'t reset statistics after posting to web. Only use for testing purposes.')
-    parser.add_option('--no-query-parameters', action='store_false', dest='queryparameters',
+    parser.add_option('--no-postgres-settings', action='store_false', dest='collect_postgres_settings',
                       default=True,
-                      help='Don\'t send queries containing parameters to the server. These help in reproducing problematic queries but can raise privacy concerns.')
+                      help='Don\'t collect Postgres configuration settings')
+    parser.add_option('--no-postgres-locks', action='store_false', dest='collect_postgres_locks',
+                      default=True,
+                      help='Don\'t collect Postgres lock information')
     parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
                       default=True,
-                      help='Don\'t collect OS level performance data'),
+                      help='Don\'t collect OS level performance data')
+    parser.add_option('--no-reset', '-n', action='store_true', dest='_dummy_noreset',
+		      help='Dummy option, no-reset is required default since 0.7')
 
     if print_help:
         parser.print_help()
@@ -205,11 +171,17 @@ def fetch_postgres_information():
     # Populate result dictionary
     info['schema']   = schema.values()
     info['version']  = PI.version()
-    info['settings'] = PI.settings()
-    info['bgwriter'] = PI.bgwriter_stats()
     info['database'] = PI.db_stats()
-    info['locks']    = PI.locks()
-    info['backends'] = PI.backends(option['queryparameters'])
+    info['bgwriter'] = PI.bgwriter_stats()
+    info['backends'] = PI.backends()
+    info['replication']           = PI.replication()
+    info['replication_conflicts'] = PI.replication_conflicts()
+
+    if option['collect_postgres_settings']:
+        info['settings'] = PI.settings()
+
+    if option['collect_postgres_locks']:
+        info['locks']    = PI.locks()
 
     return info
 
@@ -229,18 +201,14 @@ def post_data_to_web(data):
     to_post['api_key'] = dbconf['api_key']
     to_post['collected_at'] = calendar.timegm(time.gmtime())
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
-    to_post['query_parameters'] = option['queryparameters']
     to_post['system_information'] = option['systeminformation']
     to_post['query_source'] = option['query_source']
+    to_post['no_reset'] = True
 
     if option['dryrun']:
         logger.info("Dumping data that would get posted")
 
         to_post['data'] = json.loads(to_post['data'])
-        for query in to_post['data']['queries']:
-            for plan in query['plans']:
-                if 'explain' in plan:
-                    plan['explain'] = json.loads(plan['explain'])
         print(json.dumps(to_post, sort_keys=True, indent=4, separators=(',', ': '), cls=DatetimeEncoder))
 
         logger.info("Exiting.")
@@ -268,10 +236,7 @@ def fetch_query_information():
     query = "SELECT extname FROM pg_extension"
 
     extensions = map(lambda q: q['extname'], db.run_query(query))
-    if 'pg_stat_plans' in extensions:
-        logger.debug("Found pg_stat_plans, using it for query information")
-        return ['pg_stat_plans', PgStatPlans(db).fetch_queries(option['queryparameters'])]
-    elif 'pg_stat_statements' in extensions:
+    if 'pg_stat_statements' in extensions:
         logger.debug("Found pg_stat_statements, using it for query information")
         return ['pg_stat_statements', PgStatStatements(db).fetch_queries()]
     else:
@@ -295,10 +260,12 @@ def main():
     dbconf = c.read()
     db     = setup_database()
 
+    if db.version_numeric < 90200:
+        logger.error("To use the collector you must have at least Postgres 9.2 or newer")
+        sys.exit(1)
+
     if is_remote_system():
         option['systeminformation'] = False
-    else:
-        check_db_superuser()
 
     data = {}
     (option['query_source'], data['queries']) = fetch_query_information()
@@ -312,13 +279,6 @@ def main():
     if code == 200:
         if not option['quiet']:
             logger.info("Submitted successfully")
-
-        if not option['noreset']:
-            logger.debug("Resetting stats!")
-            if option['query_source'] == 'pg_stat_plans':
-                db.run_query("SELECT pg_stat_plans_reset()")
-            elif option['query_source'] == 'pg_stat_statements':
-                db.run_query("SELECT pg_stat_statements_reset()")
     else:
         logger.error("Rejected by server: %s" % output)
 

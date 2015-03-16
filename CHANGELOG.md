@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0    2015-03-16
+
+* Reset-less collector
+  * Calculate the diff on the receiver end for simplicity's sake
+  * Don't run pg_stat_statements_reset() anymore
+  * Make --no-reset option a no-op (will be removed soon)
+* Restricted privileges
+  * Added support for using a monitoring user (see README)
+  * Removed hard superuser requirement
+* Don't collect query information from pg_stat_activity (it might be sensitive)
+  * Remove --no-query-parameters option, its a no-op now
+* Collect replication statistics
+* Add option for disabling collection of postgres locks & config settings
+* Remove support for pg_stat_plans, its not supported anymore
+* Update vendored pg8000 to latest version (1.10.1)
+
+
 ## 0.6.4    2014-11-17
 
 Fixes:

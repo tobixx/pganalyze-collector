@@ -1,9 +1,6 @@
-# Copyright (c) 2014, pganalyze Team <team@pganalyze.com>
-#  All rights reserved.
-
 import logging
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 class PostgresInformation():
     def __init__(self, db):
@@ -256,46 +253,46 @@ FROM (
 
         return result
 
-    def backends(self, send_query_information):
-        pre92 = self.db.version_numeric < 90200
+    def backends(self):
+        # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-ACTIVITY-VIEW
+        #
+        # Note: We don't include query to avoid sending sensitive data
+        query = """
+SELECT pid, usename, application_name, client_addr::text, backend_start,
+       xact_start, query_start, state_change, waiting, state
+  FROM pg_stat_activity
+ WHERE pid <> pg_backend_pid()
+       AND datname = current_database()
+"""
 
-        querycolumns = 'datname AS database, usename AS username, application_name, client_addr::text,' \
-                       ' client_hostname, client_port, backend_start, xact_start, query_start, waiting'
+        return self.db.run_query(query)
 
-        pre92_columns = ", procpid AS pid, current_query AS query"
-        post92_columns = ", pid, query, state"
-        querycolumns += pre92_columns if pre92 else post92_columns
+    def replication(self):
+        # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-REPLICATION-VIEW
+        query = """
+SELECT pid, usename, application_name, client_addr::text, client_port,
+       backend_start, state, sync_priority, sync_state, sent_location::text,
+       write_location::text, flush_location::text, replay_location::text
+  FROM pg_stat_replication
+ WHERE pid <> pg_backend_pid()
+"""
 
-        pidcol = 'procpid' if pre92 else 'pid'
+        return self.db.run_query(query)
 
-        query = "SELECT %s FROM pg_stat_activity WHERE %s <> pg_backend_pid()" % (querycolumns, pidcol)
-        result = self.db.run_query(query)
+    def replication_conflicts(self):
+        # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-DATABASE-CONFLICTS-VIEW
+        query = """
+SELECT confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock
+  FROM pg_stat_database_conflicts
+ WHERE datname = current_database()
+"""
 
-        for row in result:
-
-            # Fake state column for pre-9.2 versions
-            if pre92:
-                if row['query'] == '<IDLE> in transaction':
-                    row['state'] = 'idle in transaction'
-                elif row['query'] == '<IDLE>':
-                    row['state'] = 'idle'
-                else:
-                    row['state'] = 'active'
-
-            # Drop query and client information if query parameter collection is disabled
-            if not send_query_information:
-                logger.debug("Scrubbing private data from pg_stat_activity output")
-                del(row['client_addr'])
-                del(row['client_hostname'])
-                del(row['client_port'])
-                del(row['query'])
-
-        return result
+        return self.db.run_query(query)
 
     def locks(self):
+        # http://www.postgresql.org/docs/devel/static/view-pg-locks.html
         query = """
-SELECT d.datname AS database,
-       n.nspname AS schema,
+SELECT n.nspname AS schema,
        c.relname AS relation,
        l.locktype,
        l.page,
@@ -310,7 +307,8 @@ FROM pg_locks l
 LEFT JOIN pg_catalog.pg_class c ON l.relation = c.oid
 LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_catalog.pg_database d ON d.oid = l.database
-WHERE l.pid <> pg_backend_pid();
+WHERE l.pid <> pg_backend_pid() AND
+      (d.datname IS NULL OR d.datname = current_database())
 """
 
         return self.db.run_query(query)
