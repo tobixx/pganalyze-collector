@@ -9,9 +9,6 @@ class PgStatStatements():
 
     def __init__(self, db):
         self.db = db
-        if db.version_numeric < 90200:
-            logger.error("To use pg_stat_statements you must have at least Postgres 9.2 or newer")
-            sys.exit(1)
 
     def have_stats_helper(self):
         query = """

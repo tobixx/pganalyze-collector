@@ -257,6 +257,10 @@ def main():
     dbconf = c.read()
     db     = setup_database()
 
+    if db.version_numeric < 90200:
+        logger.error("To use the collector you must have at least Postgres 9.2 or newer")
+        sys.exit(1)
+
     if is_remote_system():
         option['systeminformation'] = False
 
