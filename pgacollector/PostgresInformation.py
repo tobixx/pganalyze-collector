@@ -253,10 +253,46 @@ FROM (
 
         return result
 
-    def locks(self):
+    def backends(self):
+        # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-ACTIVITY-VIEW
+        #
+        # Note: We don't include query to avoid sending sensitive data
         query = """
-SELECT d.datname AS database,
-       n.nspname AS schema,
+SELECT pid, usename, application_name, client_addr::text, backend_start,
+       xact_start, query_start, state_change, waiting, state
+  FROM pg_stat_activity
+ WHERE pid <> pg_backend_pid()
+       AND datname = current_database()
+"""
+
+        return self.db.run_query(query)
+
+    def replication(self):
+        # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-REPLICATION-VIEW
+        query = """
+SELECT pid, usename, application_name, client_addr::text, client_port,
+       backend_start, state, sync_priority, sync_state, sent_location::text,
+       write_location::text, flush_location::text, replay_location::text
+  FROM pg_stat_replication
+ WHERE pid <> pg_backend_pid()
+"""
+
+        return self.db.run_query(query)
+
+    def replication_conflicts(self):
+        # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-DATABASE-CONFLICTS-VIEW
+        query = """
+SELECT confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock
+  FROM pg_stat_database_conflicts
+ WHERE datname = current_database()
+"""
+
+        return self.db.run_query(query)
+
+    def locks(self):
+        # http://www.postgresql.org/docs/devel/static/view-pg-locks.html
+        query = """
+SELECT n.nspname AS schema,
        c.relname AS relation,
        l.locktype,
        l.page,
@@ -271,7 +307,8 @@ FROM pg_locks l
 LEFT JOIN pg_catalog.pg_class c ON l.relation = c.oid
 LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_catalog.pg_database d ON d.oid = l.database
-WHERE l.pid <> pg_backend_pid();
+WHERE l.pid <> pg_backend_pid() AND
+      (d.datname IS NULL OR d.datname = current_database())
 """
 
         return self.db.run_query(query)

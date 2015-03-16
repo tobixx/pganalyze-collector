@@ -173,6 +173,9 @@ def fetch_postgres_information():
     info['version']  = PI.version()
     info['database'] = PI.db_stats()
     info['bgwriter'] = PI.bgwriter_stats()
+    info['backends'] = PI.backends()
+    info['replication']           = PI.replication()
+    info['replication_conflicts'] = PI.replication_conflicts()
 
     if option['collect_postgres_settings']:
         info['settings'] = PI.settings()
