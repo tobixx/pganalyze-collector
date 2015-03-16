@@ -68,14 +68,13 @@ $$ LANGUAGE sql VOLATILE SECURITY DEFINER;
 CREATE USER pganalyze PASSWORD 'mypassword';
 REVOKE ALL ON SCHEMA public FROM pganalyze;
 GRANT USAGE ON SCHEMA pganalyze TO pganalyze;
-GRANT EXECUTE ON FUNCTION pganalyze.get_stat_statements() TO pganalyze;
 ```
 
 Note that these statements must be run as a superuser (to create the `SECURITY DEFINER` function),
 but from here onwards you can use the `pganalyze` user instead.
 
-The collector will automatically use the `get_stat_statements` helper method
-if it exists in the `pganalyze` schema - otherwise data will be fetched directly.
+The collector will automatically use the helper methods
+if they exist in the `pganalyze` schema - otherwise data will be fetched directly.
 
 
 Example output
