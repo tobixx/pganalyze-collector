@@ -3,8 +3,10 @@
 ## 0.8.0    UNRELEASED
 
 * Compress data using zlib by default (disable with --no-compression)
-* Collect function definitions
-* Collect views and their definitions
+* Collect function definitions (disable with --no-postgres-functions)
+* Collect normal and materialized views
+* Update table/index bloat queries to use newest by pgExperts/Josh Berkus
+  * Disable bloat stats collection with --no-postgres-bloat
 * Output timing information in verbose mode
 
 

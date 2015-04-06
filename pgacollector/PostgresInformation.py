@@ -6,73 +6,81 @@ class PostgresInformation():
     def __init__(self, db):
         self.db = db
 
+    def relations(self):
+        query = """
+        SELECT c.oid,
+               n.nspname AS schema_name,
+               c.relname AS table_name,
+               pg_catalog.pg_table_size(c.oid) AS size_bytes,
+               c.relkind AS relation_type,
+               s.*,
+               sio.*
+          FROM pg_catalog.pg_class c
+          LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
+          LEFT JOIN pg_catalog.pg_stat_user_tables s ON (s.relid = c.oid)
+          LEFT JOIN pg_catalog.pg_statio_user_tables sio ON (sio.relid = c.oid)
+         WHERE c.relkind IN ('r','v','m')
+           AND c.relpersistence <> 't'
+           AND c.relname NOT IN ('pg_stat_statements')
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        """
+        result = self.db.run_query(query)
+        return result
+
     def columns(self):
         query = """
-SELECT n.nspname AS schema_name,
-       c.relname AS table_name,
-       pg_catalog.pg_table_size(c.oid) AS size_bytes,
-       a.attname AS name,
-       pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
-  (SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
-   FROM pg_catalog.pg_attrdef d
-   WHERE d.adrelid = a.attrelid
-     AND d.adnum = a.attnum
-     AND a.atthasdef) AS default_value,
-       a.attnotnull AS not_null,
-       a.attnum AS position,
-       c.relkind AS relation_type
-FROM pg_catalog.pg_class c
-LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-LEFT JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-WHERE c.relkind IN ('r','v','m')
-  AND c.relpersistence <> 't'
-  AND c.relname NOT IN ('pg_stat_statements')
-  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-  AND n.nspname !~ '^pg_toast'
-  AND a.attnum > 0
-  AND NOT a.attisdropped
-ORDER BY n.nspname,
-         c.relname,
-         a.attnum;
-"""
-        #FIXME: toast handling, table inheritance
+        SELECT c.oid,
+               a.attname AS name,
+               pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+          (SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+           FROM pg_catalog.pg_attrdef d
+           WHERE d.adrelid = a.attrelid
+             AND d.adnum = a.attnum
+             AND a.atthasdef) AS default_value,
+               a.attnotnull AS not_null,
+               a.attnum AS position
+        FROM pg_catalog.pg_class c
+        LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+        WHERE c.relkind IN ('r','v','m')
+          AND c.relpersistence <> 't'
+          AND c.relname NOT IN ('pg_stat_statements')
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum
+        """
 
         result = self.db.run_query(query)
         return result
 
     def indexes(self):
         query = """
-SELECT n.nspname AS schema_name,
-       c.relname AS table_name,
-       i.indkey::text AS columns,
-       c2.relname AS name,
-       pg_relation_size(c2.oid) AS size_bytes,
-       i.indisprimary AS is_primary,
-       i.indisunique AS is_unique,
-       i.indisvalid AS is_valid,
-       pg_catalog.pg_get_indexdef(i.indexrelid, 0, TRUE) AS index_def,
-       pg_catalog.pg_get_constraintdef(con.oid, TRUE) AS constraint_def
-FROM pg_catalog.pg_class c,
-     pg_catalog.pg_class c2,
-     pg_catalog.pg_namespace n,
-     pg_catalog.pg_index i
-LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid
-                                           AND conindid = i.indexrelid
-                                           AND contype IN ('p', 'u', 'x'))
-WHERE c.relkind IN ('r','v','m')
-  AND c.relpersistence <> 't'
-  AND n.nspname <> 'pg_catalog'
-  AND n.nspname <> 'information_schema'
-  AND n.nspname !~ '^pg_toast'
-  AND c.oid = i.indrelid
-  AND i.indexrelid = c2.oid
-  AND n.oid = c.relnamespace
-ORDER BY n.nspname,
-         c.relname,
-         i.indisprimary DESC,
-         i.indisunique DESC,
-         c2.relname;
-"""
+        SELECT c.oid,
+               c2.oid AS index_oid,
+               i.indkey::text AS columns,
+               c2.relname AS name,
+               pg_catalog.pg_relation_size(c2.oid) AS size_bytes,
+               i.indisprimary AS is_primary,
+               i.indisunique AS is_unique,
+               i.indisvalid AS is_valid,
+               pg_catalog.pg_get_indexdef(i.indexrelid, 0, TRUE) AS index_def,
+               pg_catalog.pg_get_constraintdef(con.oid, TRUE) AS constraint_def,
+               s.idx_scan, s.idx_tup_read, s.idx_tup_fetch,
+               sio.idx_blks_read, sio.idx_blks_hit
+          FROM pg_catalog.pg_class c
+          JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
+          JOIN pg_catalog.pg_index i ON (c.oid = i.indrelid)
+          JOIN pg_catalog.pg_class c2 ON (i.indexrelid = c2.oid)
+          LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid
+                                                     AND conindid = i.indexrelid
+                                                     AND contype IN ('p', 'u', 'x'))
+          LEFT JOIN pg_stat_user_indexes s ON (s.indexrelid = c2.oid)
+          LEFT JOIN pg_statio_user_indexes sio ON (sio.indexrelid = c2.oid)
+         WHERE c.relkind IN ('r','v','m')
+           AND c.relpersistence <> 't'
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        """
         #FIXME: column references for index expressions
 
         result = self.db.run_query(query)
@@ -83,34 +91,28 @@ ORDER BY n.nspname,
 
     def constraints(self):
         query = """
-SELECT n.nspname AS schema_name,
-       c.relname AS table_name,
-       conname AS name,
-       pg_catalog.pg_get_constraintdef(r.oid, TRUE) AS constraint_def,
-       r.conkey AS columns,
-       n2.nspname AS foreign_schema,
-       c2.relname AS foreign_table,
-       r.confkey AS foreign_columns
-FROM pg_catalog.pg_class c
-LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-LEFT JOIN pg_catalog.pg_constraint r ON r.conrelid = c.oid
-LEFT JOIN pg_catalog.pg_class c2 ON r.confrelid = c2.oid
-LEFT JOIN pg_catalog.pg_namespace n2 ON n2.oid = c2.relnamespace
-WHERE r.contype = 'f'
-  AND n.nspname <> 'pg_catalog'
-  AND n.nspname <> 'information_schema'
-  AND n.nspname !~ '^pg_toast'
-ORDER BY n.nspname,
-         c.relname,
-         name;
-"""
+        SELECT c.oid,
+               conname AS name,
+               pg_catalog.pg_get_constraintdef(r.oid, TRUE) AS constraint_def,
+               r.conkey AS columns,
+               n2.nspname AS foreign_schema,
+               c2.relname AS foreign_table,
+               r.confkey AS foreign_columns
+          FROM pg_catalog.pg_class c
+          LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+          LEFT JOIN pg_catalog.pg_constraint r ON r.conrelid = c.oid
+          LEFT JOIN pg_catalog.pg_class c2 ON r.confrelid = c2.oid
+          LEFT JOIN pg_catalog.pg_namespace n2 ON n2.oid = c2.relnamespace
+         WHERE r.contype = 'f'
+           AND n.nspname <> 'pg_catalog'
+           AND n.nspname <> 'information_schema'
+        """
         #FIXME: This probably misses check constraints and others?
         return self.db.run_query(query)
 
     def viewdefs(self):
         query = """
-        SELECT n.nspname AS schema_name,
-               c.relname AS view_name,
+        SELECT c.oid,
                pg_catalog.pg_get_viewdef(c.oid)
           FROM pg_catalog.pg_class c
           LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -118,7 +120,6 @@ ORDER BY n.nspname,
            AND c.relpersistence <> 't'
            AND c.relname NOT IN ('pg_stat_statements')
            AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-           AND n.nspname !~ '^pg_toast'
         """
         return self.db.run_query(query)
 
@@ -135,112 +136,144 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
     def version(self):
         return self.db.run_query("SELECT version()")[0]['version']
 
-    def table_stats(self):
-        query = "SELECT * FROM pg_stat_user_tables s JOIN pg_statio_user_tables sio ON s.relid = sio.relid"
-        result = self.db.run_query(query)
-
-        for row in result:
-            del row['relid']
-            row['table'] = row.pop('relname')
-            row['schema'] = row.pop('schemaname')
-
-        return result
-
-    def index_stats(self):
-        query = "SELECT * FROM pg_stat_user_indexes s JOIN pg_statio_user_indexes sio ON s.indexrelid = sio.indexrelid"
-        result = self.db.run_query(query)
-
-        for row in result:
-            del row['relid']
-            del row['indexrelid']
-            row['table'] = row.pop('relname')
-            row['schema'] = row.pop('schemaname')
-            row['index'] = row.pop('indexrelname')
-
-        return result
-
-    def bloat(self):
-        """Fetch table & index bloat from database
-
-This query has been lifted from check_postgres by Greg Sabino Mullane,
-code can be found at https://github.com/bucardo/check_postgres
-
+    def table_bloat(self):
+        # Based on https://github.com/pgexperts/pgx_scripts/blob/master/administration/table_bloat_check.sql
+        # Original snippet is Copyright (c) 2014, PostgreSQL Experts, Inc.
+        query = """
+        WITH constants AS (
+          SELECT current_setting('block_size')::numeric AS bs, 23 AS hdr, 8 AS ma
+        ),
+        no_stats AS (
+          SELECT table_schema, table_name
+           FROM information_schema.columns
+           LEFT OUTER JOIN pg_stats ON table_schema = schemaname
+                                       AND table_name = tablename
+                                       AND column_name = attname
+          WHERE attname IS NULL
+                AND table_schema NOT IN ('pg_catalog', 'information_schema')
+          GROUP BY table_schema, table_name
+        ),
+        null_headers AS (
+          SELECT hdr+1+(sum(case when null_frac <> 0 THEN 1 else 0 END)/8) as nullhdr,
+                 SUM((1-null_frac)*avg_width) as datawidth,
+                 MAX(null_frac) as maxfracsum,
+                 schemaname,
+                 tablename,
+                 hdr, ma, bs
+            FROM pg_stats CROSS JOIN constants
+            LEFT OUTER JOIN no_stats ON schemaname = no_stats.table_schema
+                                        AND tablename = no_stats.table_name
+           WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+                 AND no_stats.table_name IS NULL
+                 AND EXISTS (SELECT 1
+                               FROM information_schema.columns
+                              WHERE schemaname = columns.table_schema
+                                    AND tablename = columns.table_name)
+           GROUP BY schemaname, tablename, hdr, ma, bs
+        ),
+        data_headers AS (
+          SELECT ma, bs, hdr, schemaname, tablename,
+                 (datawidth+(hdr+ma-(case when hdr % ma=0 THEN ma ELSE hdr % ma END)))::numeric AS datahdr,
+                 (maxfracsum*(nullhdr+ma-(case when nullhdr % ma=0 THEN ma ELSE nullhdr % ma END))) AS nullhdr2
+            FROM null_headers
+        ),
+        table_estimates AS (
+          SELECT pg_class.oid,
+                 relpages * bs as table_bytes,
+                 CEIL((reltuples*
+                      (datahdr + nullhdr2 + 4 + ma -
+                        (CASE WHEN datahdr % ma=0
+                          THEN ma ELSE datahdr % ma END)
+                        )/(bs-20))) * bs AS expected_bytes
+            FROM data_headers
+            JOIN pg_class ON tablename = relname
+            JOIN pg_namespace ON relnamespace = pg_namespace.oid
+                                 AND schemaname = nspname
+           WHERE pg_class.relkind = 'r'
+        )
+        SELECT oid,
+          CASE WHEN table_bytes > 0
+          THEN table_bytes::NUMERIC
+          ELSE NULL::NUMERIC END
+          AS table_bytes,
+          CASE WHEN expected_bytes > 0
+          THEN expected_bytes::NUMERIC
+          ELSE NULL::NUMERIC END
+          AS expected_bytes,
+          CASE WHEN expected_bytes > 0 AND table_bytes > 0
+          AND expected_bytes <= table_bytes
+          THEN (table_bytes - expected_bytes)::NUMERIC
+          ELSE 0::NUMERIC END AS wasted_bytes
+        FROM table_estimates;
         """
+        return self.db.run_query(query)
 
-        query = '''
-SELECT
-  current_database() AS db, schemaname, tablename, reltuples::bigint AS tups, relpages::bigint AS pages, otta,
-  ROUND(CASE WHEN otta=0 OR sml.relpages=0 OR sml.relpages=otta THEN 0.0 ELSE sml.relpages/otta::numeric END,1) AS tbloat,
-  CASE WHEN relpages < otta THEN 0 ELSE relpages::bigint - otta END AS wastedpages,
-  CASE WHEN relpages < otta THEN 0 ELSE bs*(sml.relpages-otta)::bigint END AS wastedbytes,
-  CASE WHEN relpages < otta THEN '0 bytes'::text ELSE (bs*(relpages-otta))::bigint || ' bytes' END AS wastedsize,
-  iname, ituples::bigint AS itups, ipages::bigint AS ipages, iotta,
-  ROUND(CASE WHEN iotta=0 OR ipages=0 OR ipages=iotta THEN 0.0 ELSE ipages/iotta::numeric END,1) AS ibloat,
-  CASE WHEN ipages < iotta THEN 0 ELSE ipages::bigint - iotta END AS wastedipages,
-  CASE WHEN ipages < iotta THEN 0 ELSE bs*(ipages-iotta) END AS wastedibytes,
-  CASE WHEN ipages < iotta THEN '0 bytes' ELSE (bs*(ipages-iotta))::bigint || ' bytes' END AS wastedisize,
-  CASE WHEN relpages < otta THEN
-    CASE WHEN ipages < iotta THEN 0 ELSE bs*(ipages-iotta::bigint) END
-    ELSE CASE WHEN ipages < iotta THEN bs*(relpages-otta::bigint)
-      ELSE bs*(relpages-otta::bigint + ipages-iotta::bigint) END
-  END AS totalwastedbytes
-FROM (
-  SELECT
-    nn.nspname AS schemaname,
-    cc.relname AS tablename,
-    COALESCE(cc.reltuples,0) AS reltuples,
-    COALESCE(cc.relpages,0) AS relpages,
-    COALESCE(bs,0) AS bs,
-    COALESCE(CEIL((cc.reltuples*((datahdr+ma-
-      (CASE WHEN datahdr%ma=0 THEN ma ELSE datahdr%ma END))+nullhdr2+4))/(bs-20::float)),0) AS otta,
-    COALESCE(c2.relname,'?') AS iname, COALESCE(c2.reltuples,0) AS ituples, COALESCE(c2.relpages,0) AS ipages,
-    COALESCE(CEIL((c2.reltuples*(datahdr-12))/(bs-20::float)),0) AS iotta -- very rough approximation, assumes all cols
-  FROM
-     pg_class cc
-  JOIN pg_namespace nn ON cc.relnamespace = nn.oid AND nn.nspname <> 'information_schema'
-  LEFT JOIN
-  (
-    SELECT
-      ma,bs,foo.nspname,foo.relname,
-      (datawidth+(hdr+ma-(case when hdr%ma=0 THEN ma ELSE hdr%ma END)))::numeric AS datahdr,
-      (maxfracsum*(nullhdr+ma-(case when nullhdr%ma=0 THEN ma ELSE nullhdr%ma END))) AS nullhdr2
-    FROM (
-      SELECT
-        ns.nspname, tbl.relname, hdr, ma, bs,
-        SUM((1-coalesce(null_frac,0))*coalesce(avg_width, 2048)) AS datawidth,
-        MAX(coalesce(null_frac,0)) AS maxfracsum,
-        hdr+(
-          SELECT 1+count(*)/8
-          FROM pg_stats s2
-          WHERE null_frac<>0 AND s2.schemaname = ns.nspname AND s2.tablename = tbl.relname
-        ) AS nullhdr
-      FROM pg_attribute att
-      JOIN pg_class tbl ON att.attrelid = tbl.oid
-      JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
-      LEFT JOIN pg_stats s ON s.schemaname=ns.nspname
-      AND s.tablename = tbl.relname
-      AND s.inherited=false
-      AND s.attname=att.attname,
-      (
-        SELECT
-          (SELECT current_setting('block_size')::numeric) AS bs,
-            CASE WHEN SUBSTRING(SPLIT_PART(v, ' ', 2) FROM '#"[0-9]+.[0-9]+#"%' for '#')
-              IN ('8.0','8.1','8.2') THEN 27 ELSE 23 END AS hdr,
-          CASE WHEN v ~ 'mingw32' OR v ~ '64-bit' THEN 8 ELSE 4 END AS ma
-        FROM (SELECT version() AS v) AS foo
-      ) AS constants
-      WHERE att.attnum > 0 AND tbl.relkind='r'
-      GROUP BY 1,2,3,4,5
-    ) AS foo
-  ) AS rs
-  ON cc.relname = rs.relname AND nn.nspname = rs.nspname
-  LEFT JOIN pg_index i ON indrelid = cc.oid
-  LEFT JOIN pg_class c2 ON c2.oid = i.indexrelid
-) AS sml
-'''
-
-        result = self.db.run_query(query)
-        return result
+    def index_bloat(self):
+        # Based on https://github.com/pgexperts/pgx_scripts/blob/master/administration/index_bloat_check.sql
+        # Original snippet is Copyright (c) 2014, PostgreSQL Experts, Inc.
+        query = """
+        WITH btree_index_atts AS (
+          SELECT nspname, relname, reltuples, relpages, indrelid, relam,
+                 regexp_split_to_table(indkey::text, ' ')::smallint AS attnum,
+                 indexrelid as index_oid
+            FROM pg_index
+            JOIN pg_class ON pg_class.oid=pg_index.indexrelid
+            JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+            JOIN pg_am ON pg_class.relam = pg_am.oid
+           WHERE pg_am.amname = 'btree'
+        ),
+        index_item_sizes AS (
+          SELECT i.nspname, i.relname, i.reltuples, i.relpages, i.relam,
+                 (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass AS starelid, a.attrelid AS table_oid, index_oid,
+                 current_setting('block_size')::numeric AS bs,
+                 8 AS maxalign,
+                 24 AS pagehdr,
+                 /* per tuple header: add index_attribute_bm if some cols are null-able */
+                 CASE WHEN max(coalesce(s.null_frac,0)) = 0
+                     THEN 2
+                     ELSE 6
+                 END AS index_tuple_hdr,
+                 /* data len: we remove null values save space using it fractionnal part from stats */
+                 sum( (1-coalesce(s.null_frac, 0)) * coalesce(s.avg_width, 2048) ) AS nulldatawidth
+            FROM pg_attribute AS a
+            JOIN pg_stats AS s ON (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass = a.attrelid AND s.attname = a.attname
+            JOIN btree_index_atts AS i ON i.indrelid = a.attrelid AND a.attnum = i.attnum
+           WHERE a.attnum > 0
+           GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
+        ),
+        index_aligned AS (
+          SELECT maxalign, bs, nspname, relname AS index_name, reltuples,
+                 relpages, relam, table_oid, index_oid,
+                 ( 2 +
+                     maxalign - CASE /* Add padding to the index tuple header to align on MAXALIGN */
+                       WHEN index_tuple_hdr % maxalign = 0 THEN maxalign
+                       ELSE index_tuple_hdr % maxalign
+                     END
+                   + nulldatawidth + maxalign - CASE /* Add padding to the data to align on MAXALIGN */
+                       WHEN nulldatawidth::integer % maxalign = 0 THEN maxalign
+                       ELSE nulldatawidth::integer % maxalign
+                     END
+                )::numeric AS nulldatahdrwidth, pagehdr
+           FROM index_item_sizes AS s1
+        ),
+        otta_calc AS (
+          SELECT bs, nspname, table_oid, index_oid, index_name, relpages, coalesce(
+                 ceil((reltuples*(4+nulldatahdrwidth))/(bs-pagehdr::float)) +
+                      CASE WHEN am.amname IN ('hash','btree') THEN 1 ELSE 0 END , 0 -- btree and hash have a metadata reserved block
+                 ) AS otta
+          FROM index_aligned AS s2
+          LEFT JOIN pg_am am ON s2.relam = am.oid
+        )
+        SELECT sub.index_oid,
+          CASE
+          WHEN sub.relpages <= otta THEN 0
+          ELSE bs*(sub.relpages-otta)::bigint END
+          AS wasted_bytes
+        FROM otta_calc AS sub
+          JOIN pg_class AS c ON c.oid = sub.table_oid
+          JOIN pg_stat_user_indexes AS stat ON sub.index_oid = stat.indexrelid
+        """
+        return self.db.run_query(query)
 
     def bgwriter_stats(self):
         query = "SELECT * FROM pg_stat_bgwriter"
@@ -357,10 +390,14 @@ WHERE l.pid <> pg_backend_pid() AND
                pp.probin,
                pp.proconfig,
                pg_get_function_arguments(pp.oid),
-               pg_get_function_result(pp.oid)
+               pg_get_function_result(pp.oid),
+               ps.calls,
+               ps.total_time,
+               ps.self_time
           FROM pg_proc pp
          INNER JOIN pg_namespace pn ON (pp.pronamespace = pn.oid)
          INNER JOIN pg_language pl ON (pp.prolang = pl.oid)
+          LEFT JOIN pg_stat_user_functions ps ON (ps.funcid = pp.oid)
          WHERE pl.lanname != 'internal'
                AND pn.nspname NOT IN ('pg_catalog', 'information_schema')
                AND pp.proname NOT IN ('pg_stat_statements', 'pg_stat_statements_reset')

@@ -64,6 +64,12 @@ def parse_options(print_help=False):
     parser.add_option('--no-postgres-locks', action='store_false', dest='collect_postgres_locks',
                       default=True,
                       help='Don\'t collect Postgres lock information')
+    parser.add_option('--no-postgres-functions', action='store_false', dest='collect_postgres_functions',
+                      default=True,
+                      help='Don\'t collect Postgres function/procedure information')
+    parser.add_option('--no-postgres-bloat', action='store_false', dest='collect_postgres_bloat',
+                      default=True,
+                      help='Don\'t collect Postgres table/index bloat statistics')
     parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
                       default=True,
                       help='Don\'t collect OS level performance data')
@@ -124,67 +130,40 @@ def fetch_postgres_information():
     info = {}
     schema = {}
 
-    indexstats = {}
-    tablestats = {}
+    table_bloat_stats = {}
+    index_bloat_stats = {}
 
-    #Prepare stats for later merging
-    for row in PI.index_stats():
-        del row['table']
-        indexkey = '.'.join([row.pop('schema'), row.pop('index')])
-        indexstats[indexkey] = row
+    if option['collect_postgres_bloat']:
+        for row in PI.table_bloat():
+            table_bloat_stats[row['oid']] = row['wasted_bytes']
 
-    for row in PI.table_stats():
-        tablekey = '.'.join([row.pop('schema'), row.pop('table')])
-        tablestats[tablekey] = row
+        for row in PI.index_bloat():
+            index_bloat_stats[row['index_oid']] = row['wasted_bytes']
 
-    # Merge Table & Index bloat information into table/indexstats dicts
-    for row in PI.bloat():
-        tablekey = '.'.join([row.get('schemaname'), row.pop('tablename')])
-        indexkey = '.'.join([row.pop('schemaname'), row.pop('iname')])
-        if tablekey in tablestats:
-            tablestats[tablekey]['wasted_bytes'] = row['wastedbytes']
-        if indexkey in indexstats:
-            indexstats[indexkey]['wasted_bytes'] = row['wastedibytes']
-
-    # Combine Table, View, Index and Constraint information into a combined schema dict
-    for row in PI.columns():
-        tablekey = '.'.join([row['schema_name'], row['table_name']])
-        if not tablekey in schema:
-            schema[tablekey] = {}
-
-        schema[tablekey]['schema_name'] = row.pop('schema_name')
-        schema[tablekey]['table_name'] = row.pop('table_name')
-        schema[tablekey]['size_bytes'] = row.pop('size_bytes')
-        schema[tablekey]['relation_type'] = row.pop('relation_type')
-
-        if tablekey in tablestats:
-            schema[tablekey]['stats'] = tablestats[tablekey]
-
-        if not 'columns' in schema[tablekey]:
-            schema[tablekey]['columns'] = []
-        schema[tablekey]['columns'].append(row)
-
-    for row in PI.indexes():
-        statskey = '.'.join([row['schema_name'], row['name']])
-        tablekey = '.'.join([row.pop('schema_name'), row.pop('table_name')])
-
-        #Merge index stats
-        row = dict(row.items() + indexstats[statskey].items())
-
-        if not 'indices' in schema[tablekey]:
-            schema[tablekey]['indices'] = []
-        schema[tablekey]['indices'].append(row)
+    for row in PI.relations():
+        oid = row.pop('oid')
+        schema[oid] = dict((k, row[k]) for k in ('schema_name', 'table_name', 'relation_type'))
+        schema[oid]['stats'] = dict((k, row[k]) for k in set(row.keys()) - set(['relid', 'relname', 'schema_name', 'schemaname', 'table_name', 'relation_type']))
+        schema[oid]['stats']['wasted_bytes'] = table_bloat_stats.get(oid)
+        schema[oid]['columns'] = []
+        schema[oid]['indices'] = []
+        schema[oid]['constraints'] = []
 
     for row in PI.viewdefs():
-        tablekey = '.'.join([row['schema_name'], row['view_name']])
-        schema[tablekey]['viewdef'] = row['viewdef']
+        schema[row['oid']]['viewdef'] = row['viewdef']
+
+    for row in PI.columns():
+        oid = row.pop('oid')
+        schema[oid]['columns'].append(row)
+
+    for row in PI.indexes():
+        oid = row.pop('oid')
+        row['wasted_bytes'] = index_bloat_stats.get(row.pop('index_oid'))
+        schema[oid]['indices'].append(row)
 
     for row in PI.constraints():
-        tablekey = '.'.join([row.pop('schema_name'), row.pop('table_name')])
-        if not 'constraints' in schema[tablekey]:
-            schema[tablekey]['constraints'] = []
-        schema[tablekey]['constraints'].append(row)
-
+        oid = row.pop('oid')
+        schema[oid]['constraints'].append(row)
 
     # Populate result dictionary
     info['schema']   = schema.values()
@@ -195,7 +174,9 @@ def fetch_postgres_information():
     info['backends'] = PI.backends()
     info['replication']           = PI.replication()
     info['replication_conflicts'] = PI.replication_conflicts()
-    info['functions'] = PI.functions()
+
+    if option['collect_postgres_functions']:
+        info['functions'] = PI.functions()
 
     if option['collect_postgres_settings']:
         info['settings'] = PI.settings()
