@@ -149,8 +149,8 @@ def fetch_postgres_information():
         schema[oid]['indices'] = []
         schema[oid]['constraints'] = []
 
-    for row in PI.viewdefs():
-        schema[row['oid']]['viewdef'] = row['viewdef']
+    for row in PI.view_definitions():
+        schema[row['oid']]['view_definition'] = row['view_definition']
 
     for row in PI.columns():
         oid = row.pop('oid')

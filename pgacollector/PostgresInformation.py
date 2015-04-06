@@ -20,9 +20,9 @@ class PostgresInformation():
           LEFT JOIN pg_catalog.pg_stat_user_tables s ON (s.relid = c.oid)
           LEFT JOIN pg_catalog.pg_statio_user_tables sio ON (sio.relid = c.oid)
          WHERE c.relkind IN ('r','v','m')
-           AND c.relpersistence <> 't'
-           AND c.relname NOT IN ('pg_stat_statements')
-           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND c.relpersistence <> 't'
+               AND c.relname NOT IN ('pg_stat_statements')
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         """
         result = self.db.run_query(query)
         return result
@@ -43,11 +43,11 @@ class PostgresInformation():
         LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         LEFT JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
         WHERE c.relkind IN ('r','v','m')
-          AND c.relpersistence <> 't'
-          AND c.relname NOT IN ('pg_stat_statements')
-          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-          AND a.attnum > 0
-          AND NOT a.attisdropped
+              AND c.relpersistence <> 't'
+              AND c.relname NOT IN ('pg_stat_statements')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND a.attnum > 0
+              AND NOT a.attisdropped
         ORDER BY a.attnum
         """
 
@@ -78,8 +78,8 @@ class PostgresInformation():
           LEFT JOIN pg_stat_user_indexes s ON (s.indexrelid = c2.oid)
           LEFT JOIN pg_statio_user_indexes sio ON (sio.indexrelid = c2.oid)
          WHERE c.relkind IN ('r','v','m')
-           AND c.relpersistence <> 't'
-           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND c.relpersistence <> 't'
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         """
         #FIXME: column references for index expressions
 
@@ -104,22 +104,21 @@ class PostgresInformation():
           LEFT JOIN pg_catalog.pg_class c2 ON r.confrelid = c2.oid
           LEFT JOIN pg_catalog.pg_namespace n2 ON n2.oid = c2.relnamespace
          WHERE r.contype = 'f'
-           AND n.nspname <> 'pg_catalog'
-           AND n.nspname <> 'information_schema'
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         """
         #FIXME: This probably misses check constraints and others?
         return self.db.run_query(query)
 
-    def viewdefs(self):
+    def view_definitions(self):
         query = """
         SELECT c.oid,
-               pg_catalog.pg_get_viewdef(c.oid)
+               pg_catalog.pg_get_viewdef(c.oid) AS view_definition
           FROM pg_catalog.pg_class c
           LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
          WHERE c.relkind IN ('v','m')
-           AND c.relpersistence <> 't'
-           AND c.relname NOT IN ('pg_stat_statements')
-           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND c.relpersistence <> 't'
+               AND c.relname NOT IN ('pg_stat_statements')
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         """
         return self.db.run_query(query)
 
@@ -331,66 +330,66 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
     def replication(self):
         # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-REPLICATION-VIEW
         query = """
-SELECT pid, usename, application_name, client_addr::text, client_port,
-       backend_start, state, sync_priority, sync_state, sent_location::text,
-       write_location::text, flush_location::text, replay_location::text
-  FROM pg_stat_replication
- WHERE pid <> pg_backend_pid()
-"""
+        SELECT pid, usename, application_name, client_addr::text, client_port,
+               backend_start, state, sync_priority, sync_state, sent_location::text,
+               write_location::text, flush_location::text, replay_location::text
+          FROM pg_stat_replication
+         WHERE pid <> pg_backend_pid()
+        """
 
         return self.db.run_query(query)
 
     def replication_conflicts(self):
         # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-DATABASE-CONFLICTS-VIEW
         query = """
-SELECT confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock
-  FROM pg_stat_database_conflicts
- WHERE datname = current_database()
-"""
+        SELECT confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock
+          FROM pg_stat_database_conflicts
+         WHERE datname = current_database()
+        """
 
         return self.db.run_query(query)
 
     def locks(self):
         # http://www.postgresql.org/docs/devel/static/view-pg-locks.html
         query = """
-SELECT n.nspname AS schema,
-       c.relname AS relation,
-       l.locktype,
-       l.page,
-       l.tuple,
-       l.virtualxid,
-       l.transactionid::text,
-       l.virtualtransaction,
-       l.pid,
-       l.mode,
-       l.granted
-FROM pg_locks l
-LEFT JOIN pg_catalog.pg_class c ON l.relation = c.oid
-LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-LEFT JOIN pg_catalog.pg_database d ON d.oid = l.database
-WHERE l.pid <> pg_backend_pid() AND
-      (d.datname IS NULL OR d.datname = current_database())
-"""
+        SELECT n.nspname AS schema,
+               c.relname AS relation,
+               l.locktype,
+               l.page,
+               l.tuple,
+               l.virtualxid,
+               l.transactionid::text,
+               l.virtualtransaction,
+               l.pid,
+               l.mode,
+               l.granted
+        FROM pg_locks l
+        LEFT JOIN pg_catalog.pg_class c ON l.relation = c.oid
+        LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_catalog.pg_database d ON d.oid = l.database
+        WHERE l.pid <> pg_backend_pid() AND
+              (d.datname IS NULL OR d.datname = current_database())
+        """
 
         return self.db.run_query(query)
 
     def functions(self):
         query = """
-        SELECT pn.nspname,
-               pp.proname,
-               pp.proisagg,
-               pp.proiswindow,
-               pp.prosecdef,
-               pp.proleakproof,
-               pp.proisstrict,
-               pp.proretset,
-               pp.provolatile,
-               pl.lanname,
-               pp.prosrc,
-               pp.probin,
-               pp.proconfig,
-               pg_get_function_arguments(pp.oid),
-               pg_get_function_result(pp.oid),
+        SELECT pn.nspname AS schema_name,
+               pp.proname AS function_name,
+               pl.lanname AS language,
+               pp.prosrc AS source,
+               pp.probin AS source_bin,
+               pp.proconfig AS config,
+               pg_get_function_arguments(pp.oid) AS arguments,
+               pg_get_function_result(pp.oid) AS result,
+               pp.proisagg AS aggregate,
+               pp.proiswindow AS window,
+               pp.prosecdef AS security_definer,
+               pp.proleakproof AS leakproof,
+               pp.proisstrict AS strict,
+               pp.proretset AS returns_set,
+               pp.provolatile AS volatile,
                ps.calls,
                ps.total_time,
                ps.self_time
