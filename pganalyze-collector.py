@@ -135,24 +135,27 @@ def fetch_postgres_information():
         if indexkey in indexstats:
             indexstats[indexkey]['wasted_bytes'] = row['wastedibytes']
 
-    # Combine Table, Index and Constraint information into a combined schema dict
+    # Combine Table, View, Index and Constraint information into a combined schema dict
     for row in PI.columns():
-        tablekey = '.'.join([row['schema'], row['table']])
+        tablekey = '.'.join([row['schema_name'], row['table_name']])
         if not tablekey in schema:
             schema[tablekey] = {}
 
-        schema[tablekey]['schema_name'] = row.pop('schema')
-        schema[tablekey]['table_name'] = row.pop('table')
-        schema[tablekey]['size_bytes'] = row.pop('tablesize')
-        schema[tablekey]['stats'] = tablestats[tablekey]
+        schema[tablekey]['schema_name'] = row.pop('schema_name')
+        schema[tablekey]['table_name'] = row.pop('table_name')
+        schema[tablekey]['size_bytes'] = row.pop('size_bytes')
+        schema[tablekey]['relation_type'] = row.pop('relation_type')
+
+        if tablekey in tablestats:
+            schema[tablekey]['stats'] = tablestats[tablekey]
 
         if not 'columns' in schema[tablekey]:
             schema[tablekey]['columns'] = []
         schema[tablekey]['columns'].append(row)
 
     for row in PI.indexes():
-        statskey = '.'.join([row['schema'], row['name']])
-        tablekey = '.'.join([row.pop('schema'), row.pop('table')])
+        statskey = '.'.join([row['schema_name'], row['name']])
+        tablekey = '.'.join([row.pop('schema_name'), row.pop('table_name')])
 
         #Merge index stats
         row = dict(row.items() + indexstats[statskey].items())
@@ -161,8 +164,12 @@ def fetch_postgres_information():
             schema[tablekey]['indices'] = []
         schema[tablekey]['indices'].append(row)
 
+    for row in PI.viewdefs():
+        tablekey = '.'.join([row['schema_name'], row['view_name']])
+        schema[tablekey]['viewdef'] = row['viewdef']
+
     for row in PI.constraints():
-        tablekey = '.'.join([row.pop('schema'), row.pop('table')])
+        tablekey = '.'.join([row.pop('schema_name'), row.pop('table_name')])
         if not 'constraints' in schema[tablekey]:
             schema[tablekey]['constraints'] = []
         schema[tablekey]['constraints'].append(row)
@@ -171,11 +178,13 @@ def fetch_postgres_information():
     # Populate result dictionary
     info['schema']   = schema.values()
     info['version']  = PI.version()
+    info['server']   = PI.server_stats()
     info['database'] = PI.db_stats()
     info['bgwriter'] = PI.bgwriter_stats()
     info['backends'] = PI.backends()
     info['replication']           = PI.replication()
     info['replication_conflicts'] = PI.replication_conflicts()
+    info['functions'] = PI.functions()
 
     if option['collect_postgres_settings']:
         info['settings'] = PI.settings()

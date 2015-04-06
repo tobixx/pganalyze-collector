@@ -8,9 +8,9 @@ class PostgresInformation():
 
     def columns(self):
         query = """
-SELECT n.nspname AS schema,
-       c.relname AS table,
-       pg_catalog.pg_table_size(c.oid) AS tablesize,
+SELECT n.nspname AS schema_name,
+       c.relname AS table_name,
+       pg_catalog.pg_table_size(c.oid) AS size_bytes,
        a.attname AS name,
        pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
   (SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
@@ -19,14 +19,15 @@ SELECT n.nspname AS schema,
      AND d.adnum = a.attnum
      AND a.atthasdef) AS default_value,
        a.attnotnull AS not_null,
-       a.attnum AS position
+       a.attnum AS position,
+       c.relkind AS relation_type
 FROM pg_catalog.pg_class c
 LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 LEFT JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-WHERE c.relkind = 'r'
+WHERE c.relkind IN ('r','v','m')
   AND c.relpersistence <> 't'
-  AND n.nspname <> 'pg_catalog'
-  AND n.nspname <> 'information_schema'
+  AND c.relname NOT IN ('pg_stat_statements')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
   AND n.nspname !~ '^pg_toast'
   AND a.attnum > 0
   AND NOT a.attisdropped
@@ -40,12 +41,9 @@ ORDER BY n.nspname,
         return result
 
     def indexes(self):
-        """ Fetch information about indexes
-
-        """
         query = """
-SELECT n.nspname AS schema,
-       c.relname AS table,
+SELECT n.nspname AS schema_name,
+       c.relname AS table_name,
        i.indkey::text AS columns,
        c2.relname AS name,
        pg_relation_size(c2.oid) AS size_bytes,
@@ -61,7 +59,7 @@ FROM pg_catalog.pg_class c,
 LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid
                                            AND conindid = i.indexrelid
                                            AND contype IN ('p', 'u', 'x'))
-WHERE c.relkind = 'r'
+WHERE c.relkind IN ('r','v','m')
   AND c.relpersistence <> 't'
   AND n.nspname <> 'pg_catalog'
   AND n.nspname <> 'information_schema'
@@ -84,14 +82,9 @@ ORDER BY n.nspname,
         return result
 
     def constraints(self):
-        """
-
-
-        :return:
-        """
         query = """
-SELECT n.nspname AS schema,
-       c.relname AS table,
+SELECT n.nspname AS schema_name,
+       c.relname AS table_name,
        conname AS name,
        pg_catalog.pg_get_constraintdef(r.oid, TRUE) AS constraint_def,
        r.conkey AS columns,
@@ -114,6 +107,21 @@ ORDER BY n.nspname,
         #FIXME: This probably misses check constraints and others?
         return self.db.run_query(query)
 
+    def viewdefs(self):
+        query = """
+        SELECT n.nspname AS schema_name,
+               c.relname AS view_name,
+               pg_catalog.pg_get_viewdef(c.oid)
+          FROM pg_catalog.pg_class c
+          LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relkind IN ('v','m')
+           AND c.relpersistence <> 't'
+           AND c.relname NOT IN ('pg_stat_statements')
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+           AND n.nspname !~ '^pg_toast'
+        """
+        return self.db.run_query(query)
+
     def triggers(self):
 
         #FIXME: Needs to be implemented
@@ -125,7 +133,7 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
 """
 
     def version(self):
-        return self.db.run_query("SELECT VERSION()")[0]['version']
+        return self.db.run_query("SELECT version()")[0]['version']
 
     def table_stats(self):
         query = "SELECT * FROM pg_stat_user_tables s JOIN pg_statio_user_tables sio ON s.relid = sio.relid"
@@ -242,6 +250,13 @@ FROM (
         query = "SELECT * FROM pg_stat_database WHERE datname = current_database()"
         return self.db.run_query(query)
 
+    def server_stats(self):
+        query = """
+        SELECT pg_postmaster_start_time() AS postmaster_start_time,
+               pg_conf_load_time() AS conf_load_time
+        """
+        return self.db.run_query(query)
+
     def settings(self):
         query = "SELECT name, setting, unit, boot_val, reset_val, source, sourcefile, sourceline FROM pg_settings"
         result = self.db.run_query(query)
@@ -324,4 +339,30 @@ WHERE l.pid <> pg_backend_pid() AND
       (d.datname IS NULL OR d.datname = current_database())
 """
 
+        return self.db.run_query(query)
+
+    def functions(self):
+        query = """
+        SELECT pn.nspname,
+               pp.proname,
+               pp.proisagg,
+               pp.proiswindow,
+               pp.prosecdef,
+               pp.proleakproof,
+               pp.proisstrict,
+               pp.proretset,
+               pp.provolatile,
+               pl.lanname,
+               pp.prosrc,
+               pp.probin,
+               pp.proconfig,
+               pg_get_function_arguments(pp.oid),
+               pg_get_function_result(pp.oid)
+          FROM pg_proc pp
+         INNER JOIN pg_namespace pn ON (pp.pronamespace = pn.oid)
+         INNER JOIN pg_language pl ON (pp.prolang = pl.oid)
+         WHERE pl.lanname != 'internal'
+               AND pn.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND pp.proname NOT IN ('pg_stat_statements', 'pg_stat_statements_reset')
+        """
         return self.db.run_query(query)
