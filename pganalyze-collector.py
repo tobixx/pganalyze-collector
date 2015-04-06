@@ -237,7 +237,8 @@ def post_data_to_web(data):
         num_tries += 1
         if code == 200 or message == 'ERROR: Invalid API key' or num_tries >= 3:
             return message,code
-        logger.info("Got %s while posting data: %s, sleeping 60 seconds then trying again" % (code, message))
+        if not option['quiet']:
+            logger.info("Got %s while posting data: %s, sleeping 60 seconds then trying again" % (code, message))
         time.sleep(60)
 
 
