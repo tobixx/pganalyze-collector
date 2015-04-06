@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0    UNRELEASED
+
+* Compress data using zlib by default (disable with --no-compression)
+* Collect function definitions
+* Collect views and their definitions
+* Output timing information in verbose mode
+
+
 ## 0.7.1    2015-03-16
 
 * Improved monitoring user support

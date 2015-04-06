@@ -14,6 +14,14 @@ import urllib
 import logging
 from optparse import OptionParser
 
+compressor_lib = None
+
+try:
+    import zlib as compressor
+    compressor_lib = 'zlib'
+except Exception as e:
+    pass
+
 from pgacollector.PostgresInformation import PostgresInformation
 from pgacollector.PgStatStatements import PgStatStatements
 from pgacollector.SystemInformation import SystemInformation
@@ -60,7 +68,10 @@ def parse_options(print_help=False):
                       default=True,
                       help='Don\'t collect OS level performance data')
     parser.add_option('--no-reset', '-n', action='store_true', dest='_dummy_noreset',
-		      help='Dummy option, no-reset is required default since 0.7')
+		              help='Dummy option, no-reset is required default since 0.7')
+    parser.add_option('--no-compression', action='store_false', dest='compression_enabled',
+                      default=True,
+                      help='Disable gzip compression for statistics data sent')
 
     if print_help:
         parser.print_help()
@@ -205,8 +216,17 @@ class DatetimeEncoder(json.JSONEncoder):
 
 
 def post_data_to_web(data):
+    data = json.dumps(data, cls=DatetimeEncoder)
+
     to_post = {}
-    to_post['data'] = json.dumps(data, cls=DatetimeEncoder)
+
+    if option['compression_enabled'] and compressor_lib:
+        logger.debug("Compressing data using %s", compressor_lib)
+        to_post['data'] = compressor.compress(data)
+        to_post['data_compressor'] = compressor_lib
+    else:
+        to_post['data'] = data
+
     to_post['api_key'] = dbconf['api_key']
     to_post['collected_at'] = calendar.timegm(time.gmtime())
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
@@ -217,7 +237,7 @@ def post_data_to_web(data):
     if option['dryrun']:
         logger.info("Dumping data that would get posted")
 
-        to_post['data'] = json.loads(to_post['data'])
+        to_post['data'] = json.loads(data)
         print(json.dumps(to_post, sort_keys=True, indent=4, separators=(',', ': '), cls=DatetimeEncoder))
 
         logger.info("Exiting.")
