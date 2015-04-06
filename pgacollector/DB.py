@@ -1,6 +1,7 @@
 import logging
 import sys
 import os
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +49,13 @@ class DB():
         cur = self.conn.cursor()
 
         try:
+            start_time = time.time()
             cur.execute(query)
 
             if commit:
                 self.conn.commit()
+
+            logger.debug("Elapsed time: %f ms", (time.time() - start_time) * 1000)
         except Exception as e:
             if should_raise:
                 self.conn.rollback()
