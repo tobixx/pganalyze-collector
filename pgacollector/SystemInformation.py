@@ -159,7 +159,11 @@ class SystemInformation():
         result['path'] = data_directory
         result['mountpoint'] = self._find_mount_point(data_directory)
 
-        vfs_stats = os.statvfs(data_directory)
+        try:
+            vfs_stats = os.statvfs(data_directory)
+        except Exception as e:
+            logger.debug("Failure: %s, skipping storage data", str(e))
+            return None
 
         result['bytes_total'] = vfs_stats.f_bsize * vfs_stats.f_blocks
         result['bytes_available'] = vfs_stats.f_bsize * vfs_stats.f_bavail
