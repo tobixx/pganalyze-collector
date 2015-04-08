@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0    UNRELEASED
+## 0.8.0    2015-04-08
 
 * Compress data using zlib by default (disable with --no-compression)
 * Collect function definitions (disable with --no-postgres-functions)
@@ -8,6 +8,7 @@
 * Update table/index bloat queries to use newest by pgExperts/Josh Berkus
   * Disable bloat stats collection with --no-postgres-bloat
 * Output timing information in verbose mode
+* Added Dockerfile to enable running collector as a sidekick service
 
 
 ## 0.7.1    2015-03-16

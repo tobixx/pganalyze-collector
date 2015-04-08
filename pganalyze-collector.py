@@ -29,7 +29,7 @@ from pgacollector.DB import DB
 from pgacollector.Configuration import Configuration
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.7.1'
+VERSION = '0.8.0'
 API_URL = 'https://pganalyze.com/queries'
 dbconf = {}
 
