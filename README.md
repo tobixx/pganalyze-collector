@@ -21,9 +21,17 @@ It currently collections information about
    * Memory
    * Storage
 
+Installation
+------------
 
-Installation & Usage
---------------------
+The collector is available in multiple convenient options:
+
+* APT/YUM/zip packages: https://pganalyze.com/docs/install/02_installing_the_collector (recommended)
+* `git clone -b production https://github.com/pganalyze/pganalyze-collector.git`
+* Docker sidekick service, details further down in this file
+
+Usage
+-----
 
 To first generate a configuration, run:
 
@@ -85,6 +93,29 @@ To get a feel for the data that is collected you can have a look at the followin
  * [Python prettyprinted](https://gist.github.com/terrorobe/7103268)
  * [JSON w/ prettyprinting](https://gist.github.com/terrorobe/7103234)
 
+
+Docker sidekick service
+-----------------------
+
+If the database you want to monitor is running inside a Docker environment you can use the Docker image:
+
+```
+docker pull lfittl/pganalyze-collector:stable
+docker run --name my-app-pga-collector --link my-app-db:db --env-file collector_config.env  lfittl/pganalyze-collector:stable
+```
+
+collector_config.env needs to look like this:
+
+```
+PGA_API_KEY=$YOUR_API_KEY
+DB_NAME=your_database_name
+DB_USERNAME=your_database_user
+DB_PASSWORD=your_database_password
+```
+
+The only required arguments are PGA_API_KEY (found in the [pganalyze](https://pganalyze.com/) dashboard) and DB_NAME.
+
+Note: You can add ```-v /path/to/database/volume/on/host:/var/lib/postgresql/data``` in order to collect I/O statistics from your database, this requires that it runs on the same machine.
 
 Authors
 -------
