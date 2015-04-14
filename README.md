@@ -28,7 +28,7 @@ The collector is available in multiple convenient options:
 
 * APT/YUM/zip packages: https://pganalyze.com/docs/install/02_installing_the_collector (recommended)
 * `git clone -b production https://github.com/pganalyze/pganalyze-collector.git`
-* Docker sidekick service, details further down in this file
+* Docker sidekick service, see details further down in this file
 
 Usage
 -----
