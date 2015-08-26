@@ -219,58 +219,73 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
             JOIN pg_class ON pg_class.oid=pg_index.indexrelid
             JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
             JOIN pg_am ON pg_class.relam = pg_am.oid
-           WHERE pg_am.amname = 'btree'
+           WHERE pg_am.amname = 'btree' AND pg_class.relpages > 0
         ),
         index_item_sizes AS (
-          SELECT i.nspname, i.relname, i.reltuples, i.relpages, i.relam,
-                 (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass AS starelid, a.attrelid AS table_oid, index_oid,
+          SELECT i.nspname,
+                 i.relname,
+                 i.reltuples,
+                 i.relpages,
+                 i.relam,
+                 (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass AS starelid,
+                 a.attrelid AS table_oid,
+                 index_oid,
                  current_setting('block_size')::numeric AS bs,
                  8 AS maxalign,
                  24 AS pagehdr,
                  /* per tuple header: add index_attribute_bm if some cols are null-able */
-                 CASE WHEN max(coalesce(s.null_frac,0)) = 0
+                 CASE WHEN max(coalesce(s.null_frac, 0)) = 0
                      THEN 2
                      ELSE 6
                  END AS index_tuple_hdr,
                  /* data len: we remove null values save space using it fractionnal part from stats */
-                 sum( (1-coalesce(s.null_frac, 0)) * coalesce(s.avg_width, 2048) ) AS nulldatawidth
-            FROM pg_attribute AS a
-            JOIN pg_stats AS s ON (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass = a.attrelid AND s.attname = a.attname
-            JOIN btree_index_atts AS i ON i.indrelid = a.attrelid AND a.attnum = i.attnum
+                 sum( (1 - coalesce(s.null_frac, 0)) * coalesce(s.avg_width, 1024) ) AS nulldatawidth
+            FROM pg_attribute a
+            JOIN pg_stats s ON (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass = a.attrelid AND s.attname = a.attname
+            JOIN btree_index_atts i ON i.indrelid = a.attrelid AND a.attnum = i.attnum
            WHERE a.attnum > 0
            GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
         ),
         index_aligned AS (
           SELECT maxalign, bs, nspname, relname AS index_name, reltuples,
                  relpages, relam, table_oid, index_oid,
-                 ( 2 +
-                     maxalign - CASE /* Add padding to the index tuple header to align on MAXALIGN */
+                 ( 6
+                   + maxalign
+                   /* Add padding to the index tuple header to align on MAXALIGN */
+                   - CASE
                        WHEN index_tuple_hdr % maxalign = 0 THEN maxalign
                        ELSE index_tuple_hdr % maxalign
                      END
-                   + nulldatawidth + maxalign - CASE /* Add padding to the data to align on MAXALIGN */
+                   + nulldatawidth
+                   + maxalign
+                   /* Add padding to the data to align on MAXALIGN */
+                   - CASE
                        WHEN nulldatawidth::integer % maxalign = 0 THEN maxalign
                        ELSE nulldatawidth::integer % maxalign
                      END
                 )::numeric AS nulldatahdrwidth, pagehdr
-           FROM index_item_sizes AS s1
+           FROM index_item_sizes
         ),
         otta_calc AS (
-          SELECT bs, nspname, table_oid, index_oid, index_name, relpages, coalesce(
-                 ceil((reltuples*(4+nulldatahdrwidth))/(bs-pagehdr::float)) +
-                      CASE WHEN am.amname IN ('hash','btree') THEN 1 ELSE 0 END , 0 -- btree and hash have a metadata reserved block
+          SELECT bs, nspname, table_oid, index_oid, index_name, relpages,
+                 coalesce(
+                    ceil(reltuples * nulldatahdrwidth)::numeric / bs
+                    - pagehdr::numeric
+                    /* btree and hash have a metadata reserved block */
+                    + CASE WHEN am.amname IN ('hash', 'btree') THEN 1 ELSE 0 END,
+                    0
                  ) AS otta
-          FROM index_aligned AS s2
-          LEFT JOIN pg_am am ON s2.relam = am.oid
+          FROM index_aligned
+          LEFT JOIN pg_am am ON index_aligned.relam = am.oid
         )
         SELECT sub.index_oid,
           CASE
-          WHEN sub.relpages <= otta THEN 0
-          ELSE bs*(sub.relpages-otta)::bigint END
-          AS wasted_bytes
+            WHEN sub.relpages <= otta THEN 0
+            ELSE bs * (sub.relpages - otta)::bigint
+          END AS wasted_bytes
         FROM otta_calc AS sub
-          JOIN pg_class AS c ON c.oid = sub.table_oid
-          JOIN pg_stat_user_indexes AS stat ON sub.index_oid = stat.indexrelid
+             JOIN pg_class AS c ON c.oid = sub.table_oid
+             JOIN pg_stat_user_indexes AS stat ON sub.index_oid = stat.indexrelid
         """
         return self.db.run_query(query)
 
