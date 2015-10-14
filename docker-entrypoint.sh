@@ -2,7 +2,7 @@
 
 set -e
 
-if [ "$1" != 'collector' ]; then
+if [ "$1" != 'cron' ] && [ "$1" != 'debug' ]; then
   exec "$@"
 fi
 
@@ -47,6 +47,11 @@ fi
 chown pganalyze:pganalyze $CONFIG_FILE
 chmod go-rwx $CONFIG_FILE
 
+if [ "$1" = 'debug' ]; then
+  gosu pganalyze python $HOME_DIR/pganalyze-collector.py $OPTS -v
+  exit 0
+fi
+
 echo "Doing initial collector test run..."
 
 gosu pganalyze python $HOME_DIR/pganalyze-collector.py $OPTS
@@ -54,12 +59,11 @@ gosu pganalyze python $HOME_DIR/pganalyze-collector.py $OPTS
 rm /var/spool/cron/crontabs/root
 echo "*/10 * * * * /usr/bin/python /home/pganalyze/pganalyze-collector.py --cron $OPTS 2>&1 | /usr/bin/logger -t collector" > /var/spool/cron/crontabs/pganalyze
 
-echo "Good to go, collector will run every 10 minutes"
-
 # These automatically run in the background
 /sbin/syslogd
 /usr/sbin/crond
 
-touch /var/log/messages
+echo "Good to go, collector will run every 10 minutes"
 
-tail -f /var/log/messages
+touch /var/log/messages
+tail -f /var/log/messages | grep -v crond
