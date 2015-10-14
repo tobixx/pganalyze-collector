@@ -81,16 +81,27 @@ class Configuration():
             logger.debug("%s => %s" % (k, v))
 
         dbconf = {}
-        dbconf['username'] = configdump.get('db_username')
-        dbconf['password'] = configdump.get('db_password')
-        dbconf['host'] = configdump.get('db_host')
-        # Set db_host to localhost if not specified and db_password present to force non-unixsocket-connection
-        if not dbconf['host'] and dbconf['password']:
-            dbconf['host'] = 'localhost'
-        dbconf['port'] = configdump.get('db_port')
-        dbconf['dbname'] = configdump.get('db_name')
         dbconf['api_key'] = configdump.get('api_key')
         dbconf['api_url'] = configdump.get('api_url', self.option['api_url'])
+
+        if configdump.get('db_url'):
+            urlparse.uses_netloc.append('postgres')
+            url = urlparse.urlparse(configdump.get('db_url'))
+
+            dbconf['username'] = url.username
+            dbconf['password'] = url.password
+            dbconf['host'] = url.hostname
+            dbconf['port'] = url.port
+            dbconf['dbname'] = url.path[1:]
+        else:
+            dbconf['username'] = configdump.get('db_username')
+            dbconf['password'] = configdump.get('db_password')
+            dbconf['host'] = configdump.get('db_host')
+            # Set db_host to localhost if not specified and db_password present to force non-unixsocket-connection
+            if not dbconf['host'] and dbconf['password']:
+                dbconf['host'] = 'localhost'
+            dbconf['port'] = configdump.get('db_port')
+            dbconf['dbname'] = configdump.get('db_name')
 
         if not dbconf['dbname'] and dbconf['api_key']:
             logger.error(
