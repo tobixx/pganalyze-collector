@@ -70,6 +70,9 @@ def parse_options(print_help=False):
     parser.add_option('--no-postgres-bloat', action='store_false', dest='collect_postgres_bloat',
                       default=True,
                       help='Don\'t collect Postgres table/index bloat statistics')
+    parser.add_option('--no-postgres-views', action='store_false', dest='collect_postgres_views',
+                      default=True,
+                      help='Don\'t collect Postgres view/materialized view information')
     parser.add_option('--no-system-information', action='store_false', dest='systeminformation',
                       default=True,
                       help='Don\'t collect OS level performance data')
@@ -140,7 +143,7 @@ def fetch_postgres_information():
         for row in PI.index_bloat():
             index_bloat_stats[row['index_oid']] = row['wasted_bytes']
 
-    for row in PI.relations():
+    for row in PI.relations(option['collect_postgres_views']):
         oid = row.pop('oid')
         schema[oid] = dict((k, row[k]) for k in ('schema_name', 'table_name', 'relation_type'))
         schema[oid]['stats'] = dict((k, row[k]) for k in set(row.keys()) - set(['relid', 'relname', 'schema_name', 'schemaname', 'table_name', 'relation_type']))
@@ -149,14 +152,15 @@ def fetch_postgres_information():
         schema[oid]['indices'] = []
         schema[oid]['constraints'] = []
 
-    for row in PI.view_definitions():
-        schema[row['oid']]['view_definition'] = row['view_definition']
+    if option['collect_postgres_views']:
+        for row in PI.view_definitions():
+            schema[row['oid']]['view_definition'] = row['view_definition']
 
-    for row in PI.columns():
+    for row in PI.columns(option['collect_postgres_views']):
         oid = row.pop('oid')
         schema[oid]['columns'].append(row)
 
-    for row in PI.indexes():
+    for row in PI.indexes(option['collect_postgres_views']):
         oid = row.pop('oid')
         row['wasted_bytes'] = index_bloat_stats.get(row.pop('index_oid'))
         schema[oid]['indices'].append(row)

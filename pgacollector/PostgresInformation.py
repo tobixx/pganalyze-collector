@@ -6,7 +6,7 @@ class PostgresInformation():
     def __init__(self, db):
         self.db = db
 
-    def relations(self):
+    def relations(self, with_views):
         query = """
         SELECT c.oid,
                n.nspname AS schema_name,
@@ -19,42 +19,38 @@ class PostgresInformation():
           LEFT JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
           LEFT JOIN pg_catalog.pg_stat_user_tables s ON (s.relid = c.oid)
           LEFT JOIN pg_catalog.pg_statio_user_tables sio ON (sio.relid = c.oid)
-         WHERE c.relkind IN ('r','v','m')
+         WHERE c.relkind IN (%s)
                AND c.relpersistence <> 't'
                AND c.relname NOT IN ('pg_stat_statements')
                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        """
+        """ % ("'r','v','m'" if with_views else "'r'")
         result = self.db.run_query(query)
         return result
 
-    def columns(self):
+    def columns(self, with_views):
         query = """
         SELECT c.oid,
                a.attname AS name,
                pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
-          (SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
-           FROM pg_catalog.pg_attrdef d
-           WHERE d.adrelid = a.attrelid
-             AND d.adnum = a.attnum
-             AND a.atthasdef) AS default_value,
+               pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS default_value,
                a.attnotnull AS not_null,
                a.attnum AS position
         FROM pg_catalog.pg_class c
         LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         LEFT JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-        WHERE c.relkind IN ('r','v','m')
+        LEFT JOIN pg_catalog.pg_attrdef d ON (d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef)
+        WHERE c.relkind IN (%s)
               AND c.relpersistence <> 't'
               AND c.relname NOT IN ('pg_stat_statements')
               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
               AND a.attnum > 0
               AND NOT a.attisdropped
-        ORDER BY a.attnum
-        """
+        """ % ("'r','v','m'" if with_views else "'r'")
 
         result = self.db.run_query(query)
         return result
 
-    def indexes(self):
+    def indexes(self, with_views):
         query = """
         SELECT c.oid,
                c2.oid AS index_oid,
@@ -77,10 +73,10 @@ class PostgresInformation():
                                                      AND contype IN ('p', 'u', 'x'))
           LEFT JOIN pg_stat_user_indexes s ON (s.indexrelid = c2.oid)
           LEFT JOIN pg_statio_user_indexes sio ON (sio.indexrelid = c2.oid)
-         WHERE c.relkind IN ('r','v','m')
+         WHERE c.relkind IN (%s)
                AND c.relpersistence <> 't'
                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-        """
+        """ % ("'r','v','m'" if with_views else "'r'")
         #FIXME: column references for index expressions
 
         result = self.db.run_query(query)
