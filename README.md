@@ -61,6 +61,8 @@ to run as a superuser, you can setup a separate monitoring user like this:
 ```
 CREATE SCHEMA pganalyze;
 
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
 CREATE OR REPLACE FUNCTION pganalyze.get_stat_statements() RETURNS SETOF pg_stat_statements AS
 $$
   SELECT * FROM public.pg_stat_statements
