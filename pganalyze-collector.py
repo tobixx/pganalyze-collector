@@ -29,8 +29,8 @@ from pgacollector.DB import DB
 from pgacollector.Configuration import Configuration
 
 MYNAME = 'pganalyze-collector'
-VERSION = '0.8.0'
-API_URL = 'https://pganalyze.com/queries'
+VERSION = '0.8.1'
+API_URL = 'https://api.pganalyze.com/v1/snapshots'
 dbconf = {}
 
 def setup_database():
