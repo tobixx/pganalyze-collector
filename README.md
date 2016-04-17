@@ -75,7 +75,7 @@ $$
   WHERE datname = current_database();
 $$ LANGUAGE sql VOLATILE SECURITY DEFINER;
 
-CREATE USER pganalyze PASSWORD 'mypassword';
+CREATE USER pganalyze WITH PASSWORD 'mypassword' CONNECTION LIMIT 5;
 REVOKE ALL ON SCHEMA public FROM pganalyze;
 GRANT USAGE ON SCHEMA pganalyze TO pganalyze;
 ```
