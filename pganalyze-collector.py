@@ -12,6 +12,7 @@ import re
 import json
 import urllib, urllib2
 import logging
+from pprint import pformat
 from optparse import OptionParser
 
 compressor_lib = None
@@ -236,16 +237,19 @@ def post_data_to_web(data):
         logger.info("Exiting.")
         sys.exit(0)
 
-    num_tries = 0
-    while True:
+    errors = {}
+
+    for api_url in dbconf['api_url']:
+        logger.info('Sending to %s', api_url)
+
         try:
             if option['jsonendpoint']:
                 headers = {"Content-Type": "application/json"}
-                req = urllib2.Request(dbconf['api_url'], headers=headers, data=json.dumps(to_post, cls=DatetimeEncoder))
+                req = urllib2.Request(api_url, headers=headers, data=json.dumps(to_post, cls=DatetimeEncoder))
                 res = urllib2.urlopen(req)
             else:
                 # FIXME: urllib doesn't do any SSL verification
-                res = urllib.urlopen(dbconf['api_url'], urllib.urlencode(to_post))
+                res = urllib.urlopen(api_url, urllib.urlencode(to_post))
 
             message = res.read()
             code = res.getcode()
@@ -253,12 +257,13 @@ def post_data_to_web(data):
             message = str(e)
             code = 'exception'
 
-        num_tries += 1
-        if code == 200 or message == 'ERROR: Invalid API key' or num_tries >= 3:
-            return message,code
         if not option['quiet']:
-            logger.info("Got %s while posting data: %s, sleeping 60 seconds then trying again" % (code, message))
-        time.sleep(60)
+            logger.info("Got %s while posting data: %s" % (code, message))
+
+        if code != 200 or message == 'ERROR: Invalid API key':
+            errors[api_url] = {'code': code, 'message': message}
+
+    return errors
 
 
 def fetch_query_information():
@@ -305,12 +310,12 @@ def main():
 
     data['postgres'] = fetch_postgres_information()
 
-    (output, code) = post_data_to_web(data)
-    if code == 200:
+    errors = post_data_to_web(data)
+    if not errors:
         if not option['quiet']:
             logger.info("Submitted successfully")
     else:
-        logger.error("Rejected by server: %s" % output)
+        logger.error("Rejected by servers:\n%s" % pformat(errors))
 
 
 if __name__ == '__main__':

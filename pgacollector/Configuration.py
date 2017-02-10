@@ -31,7 +31,7 @@ class Configuration():
                   'dbname': url.path[1:]}
 
         api_key = os.environ['PGANALYZE_APIKEY']
-        api_url = self.option['api_url']
+        api_url = self.option['api_url'].split(',')
 
     def read_file(self):
         logger.debug("Reading filesystem config")
@@ -82,7 +82,7 @@ class Configuration():
 
         dbconf = {}
         dbconf['api_key'] = configdump.get('api_key')
-        dbconf['api_url'] = configdump.get('api_url', self.option['api_url'])
+        dbconf['api_url'] = configdump.get('api_url', self.option['api_url']).split(',')
 
         if configdump.get('db_url'):
             urlparse.uses_netloc.append('postgres')
