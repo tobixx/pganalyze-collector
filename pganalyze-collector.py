@@ -67,6 +67,9 @@ def parse_options(print_help=False):
     parser.add_option('--no-postgres-functions', action='store_false', dest='collect_postgres_functions',
                       default=True,
                       help='Don\'t collect Postgres function/procedure information')
+    parser.add_option('--no-postgres-queries', action='store_false', dest='collect_postgres_queries',
+                      default=True,
+                      help='Don\'t collect Postgres queries information')
     parser.add_option('--no-postgres-bloat', action='store_false', dest='collect_postgres_bloat',
                       default=True,
                       help='Don\'t collect Postgres table/index bloat statistics')
@@ -216,7 +219,7 @@ def post_data_to_web(data):
     to_post['collected_at'] = calendar.timegm(time.gmtime())
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
     to_post['system_information'] = option['systeminformation']
-    to_post['query_source'] = option['query_source']
+    to_post['query_source'] = option.get('query_source')
     to_post['no_reset'] = True
 
     if option['dryrun']:
@@ -283,7 +286,8 @@ def main():
         option['systeminformation'] = False
 
     data = {}
-    (option['query_source'], data['queries']) = fetch_query_information()
+    if option['collect_postgres_queries']:
+        (option['query_source'], data['queries']) = fetch_query_information()
 
     if option['systeminformation']:
         data['system'] = fetch_system_information()
