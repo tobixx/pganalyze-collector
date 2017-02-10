@@ -217,6 +217,7 @@ def post_data_to_web(data):
 
     to_post['api_key'] = dbconf['api_key']
     to_post['collected_at'] = calendar.timegm(time.gmtime())
+    to_post['collected_from'] = dbconf['host']
     to_post['submitter'] = "%s %s" % (MYNAME, VERSION)
     to_post['system_information'] = option['systeminformation']
     to_post['query_source'] = option.get('query_source')
