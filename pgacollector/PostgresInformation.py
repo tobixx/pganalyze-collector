@@ -326,17 +326,27 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
         # Note: We don't include query to avoid sending sensitive data
         query = """
         SELECT pid, usename, application_name, client_addr::text, backend_start,
-               xact_start, query_start, state_change, waiting, state
+        xact_start, query_start, state_change,  %(waiting)s, state %(from)s
+        WHERE pid <> pg_backend_pid() AND datname = current_database()
         """
 
+        waiting = 'waiting'
+
         if self.have_stat_activity_helper():
-            query += " FROM pganalyze.get_stat_activity()"
+            from_  = " FROM pganalyze.get_stat_activity()"
         else:
-            query += " FROM pg_stat_activity"
+            full_version = self.version()
+            splitted = full_version.split()
+            pg_version = splitted[1]
+            major, minor, patch = pg_version.split('.')
 
-        query += " WHERE pid <> pg_backend_pid() AND datname = current_database()"
+            if int(major) >= 9 and int(minor) >= 6:
+                waiting = 'wait_event::bool as waiting'
 
-        return self.db.run_query(query)
+            from_  = " FROM pg_stat_activity"
+
+
+        return self.db.run_query(query % {'waiting': waiting, 'from': from_})
 
     def replication(self):
         # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-REPLICATION-VIEW
