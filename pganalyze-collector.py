@@ -10,7 +10,7 @@ import calendar
 import datetime
 import re
 import json
-import urllib
+import urllib, urllib2
 import logging
 from optparse import OptionParser
 
@@ -58,6 +58,8 @@ def parse_options(print_help=False):
                       help='Suppress all non-warning output during normal operation')
     parser.add_option('--dry-run', '-d', action='store_true', dest='dryrun',
                       help='Print JSON data that would get sent to web service and exit afterwards.')
+    parser.add_option('--json-endpoint', '-j', action='store_true', dest='jsonendpoint',
+                      help='If whole response should be one json document')
     parser.add_option('--no-postgres-settings', action='store_false', dest='collect_postgres_settings',
                       default=True,
                       help='Don\'t collect Postgres configuration settings')
@@ -204,14 +206,17 @@ class DatetimeEncoder(json.JSONEncoder):
 
 
 def post_data_to_web(data):
-    data = json.dumps(data, cls=DatetimeEncoder)
-
     to_post = {}
 
     if option['compression_enabled'] and compressor_lib:
         logger.debug("Compressing data using %s", compressor_lib)
+        data = json.dumps(data, cls=DatetimeEncoder)
         to_post['data'] = compressor.compress(data)
         to_post['data_compressor'] = compressor_lib
+    elif not option['jsonendpoint']:
+        # only 'data' is in json format
+        data = json.dumps(data, cls=DatetimeEncoder)
+        to_post['data'] = data
     else:
         to_post['data'] = data
 
@@ -226,7 +231,6 @@ def post_data_to_web(data):
     if option['dryrun']:
         logger.info("Dumping data that would get posted")
 
-        to_post['data'] = json.loads(data)
         print(json.dumps(to_post, sort_keys=True, indent=4, separators=(',', ': '), cls=DatetimeEncoder))
 
         logger.info("Exiting.")
@@ -235,8 +239,14 @@ def post_data_to_web(data):
     num_tries = 0
     while True:
         try:
-            # FIXME: urllib doesn't do any SSL verification
-            res = urllib.urlopen(dbconf['api_url'], urllib.urlencode(to_post))
+            if option['jsonendpoint']:
+                headers = {"Content-Type": "application/json"}
+                req = urllib2.Request(dbconf['api_url'], headers=headers, data=json.dumps(to_post, cls=DatetimeEncoder))
+                res = urllib2.urlopen(req)
+            else:
+                # FIXME: urllib doesn't do any SSL verification
+                res = urllib.urlopen(dbconf['api_url'], urllib.urlencode(to_post))
+
             message = res.read()
             code = res.getcode()
         except IOError as e:
