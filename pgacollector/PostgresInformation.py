@@ -338,9 +338,14 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
             full_version = self.version()
             splitted = full_version.split()
             pg_version = splitted[1]
-            major, minor, patch = pg_version.split('.')
 
-            if int(major) >= 9 and int(minor) >= 6:
+            if pg_version.count('.') == 2:
+                major, minor, _ = pg_version.split('.')
+            else:
+                major, minor = pg_version.split('.')
+
+            version_tuple = (int(major), int(minor))
+            if version_tuple >= (9, 6):
                 waiting = 'wait_event::bool as waiting'
 
             from_  = " FROM pg_stat_activity"
@@ -352,13 +357,28 @@ SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled
         # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-REPLICATION-VIEW
         query = """
         SELECT pid, usename, application_name, client_addr::text, client_port,
-               backend_start, state, sync_priority, sync_state, sent_location::text,
-               write_location::text, flush_location::text, replay_location::text
+               backend_start, state, sync_priority, sync_state, sent_%(location)s::text,
+               write_%(location)s::text, flush_%(location)s::text, replay_%(location)s::text
           FROM pg_stat_replication
          WHERE pid <> pg_backend_pid()
         """
 
-        return self.db.run_query(query)
+        full_version = self.version()
+        splitted = full_version.split()
+        pg_version = splitted[1]
+
+        if pg_version.count('.') == 2:
+            major, minor, _ = pg_version.split('.')
+        else:
+            major, minor = pg_version.split('.')
+
+        version_tuple = (int(major), int(minor))
+        if version_tuple > (9, 6):
+            location = 'lsn'
+        else:
+            location = 'location'
+
+        return self.db.run_query(query % {'location': location})
 
     def replication_conflicts(self):
         # http://www.postgresql.org/docs/devel/static/monitoring-stats.html#PG-STAT-DATABASE-CONFLICTS-VIEW
